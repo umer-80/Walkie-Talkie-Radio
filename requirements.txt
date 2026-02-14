@@ -1,0 +1,52 @@
+
+Project Title: P2P Global Radio (Cross-Platform Walkie-Talkie)
+Goal: Build a serverless, peer-to-peer audio streaming application that works via WebRTC for long-distance and Wi-Fi Direct for local use.
+
+Phase 1: The "Engine" (Web-Based Prototype)
+"Create a single-page web application using Vanilla JavaScript and WebRTC. The app must allow two users to connect directly using a manual 'Signaling' method (No central server).
+
+Core Logic:
+
+Handshake: Generate an SDP Offer string that can be shared. Provide an input field to paste an SDP Answer string.
+
+Audio Stream: Use navigator.mediaDevices.getUserMedia to capture mono audio at 16kHz.
+
+PTT Mechanism: Implement a 'Push-to-Talk' button. Audio data should only be sent through the RTCPeerConnection while the button is held (onMouseDown/onPointerDown).
+
+Receiver: Automatically play incoming audio streams using the AudioContext API to minimize lag."
+
+Phase 2: The "Radio" UI (Branding & Experience)
+"Design a high-fidelity, 'Rugged Radio' themed UI.
+
+Visual Elements: A large circular PTT button, a digital frequency display (e.g., 'CH-01'), and a signal strength meter.
+
+Audio Feedback: Add a short 'Chirp' sound effect (MP3) when the PTT button is released (the 'Roger' beep) and a 'Static' white noise floor when the connection is active but no one is talking."
+
+Phase 3: The Landing Page (Marketing & Distribution)
+"Create a modern, dark-themed landing page.
+
+Hero Section: Catchy title: 'Global Radio: Zero Servers. Total Privacy.'
+
+Instructions: >    1. Download the APK.
+2. Share your Digital Key with a friend.
+3. Push to talk.
+
+Download Section: A prominent 'Download for Android' button that links to the .apk file hosted on GitHub or Firebase."
+
+Phase 4: APK Conversion (Mobile Implementation)
+"Wrap the web application into an Android Project using WebView or Cordova.
+
+Permissions: Ensure RECORD_AUDIO, INTERNET, and MODIFY_AUDIO_SETTINGS are requested.
+
+Optimization: Configure the WebView to allow MediaDevices access without user prompt after the first time.
+
+Offline Logic: Add a secondary toggle for Wi-Fi P2P (Wi-Fi Direct) for when internet is unavailable."
+
+
+
+Component,Technology,Why this choice?
+Web Frontend,HTML5 / Tailwind CSS / Vanilla JS,"Lightweight and fast; perfect for a ""browser-first"" prototype."
+Real-time Audio,WebRTC API,The gold standard for peer-to-peer audio without needing a central server.
+Audio Processing,Web Audio API,"Handles the ""Chirp"" sounds, white noise, and gain control."
+Mobile Wrapper,Apache Cordova or Capacitor,Easily turns your web app into an APK while giving access to native hardware.
+Offline Connectivity,Android Wi-Fi Direct (P2P),Allows phones to talk without any internet or Wi-Fi router.

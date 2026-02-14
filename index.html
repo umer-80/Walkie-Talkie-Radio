@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>P2P Global Radio - Rugged Edition</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <header>
+        <h1>P2P Global Radio</h1>
+        <p id="connection-status">Status: Disconnected</p>
+    </header>
+
+    <main>
+        <section class="radio-section">
+            <div class="radio-chassis">
+                <div class="radio-antenna"></div>
+                <div class="radio-body">
+                    <div class="speaker-grill"></div>
+
+                    <div class="ui-panel">
+                        <div class="display-container">
+                            <div class="signal-meter">
+                                <div class="meter-bar" id="meter-bar"></div>
+                                <span class="meter-label">SIG</span>
+                            </div>
+                            <div class="main-display">
+                                <span id="frequency">CH-01</span>
+                                <div class="led-indicators">
+                                    <div class="led" id="tx-led">TX</div>
+                                    <div class="led" id="rx-led">RX</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="controls">
+                            <div class="volume-knob"></div>
+                            <button id="ptt-button" class="ptt-btn">PTT</button>
+                        </div>
+                    </div>
+
+                    <div class="branding">P2P GLOBAL RADIO</div>
+                </div>
+            </div>
+        </section>
+
+        <section class="signaling-section">
+            <details>
+                <summary>Connection Settings (Signaling)</summary>
+                <div class="signaling-grid">
+                    <div class="card">
+                        <h3>Host</h3>
+                        <button id="create-offer">1. Create Offer</button>
+                        <textarea id="offer-out" readonly placeholder="Copy result..."></textarea>
+                        <button id="copy-offer">Copy Key</button>
+                    </div>
+
+                    <div class="card">
+                        <h3>Join</h3>
+                        <textarea id="offer-in" placeholder="Paste Offer Key..."></textarea>
+                        <button id="create-answer">2. Create Answer</button>
+                        <textarea id="answer-out" readonly placeholder="Copy result..."></textarea>
+                        <button id="copy-answer">Copy Key</button>
+                    </div>
+
+                    <div class="card full-width">
+                        <h3>Finalize (Host only)</h3>
+                        <textarea id="answer-in" placeholder="Paste Answer Key..."></textarea>
+                        <button id="accept-answer">3. Connect</button>
+                    </div>
+                </div>
+            </details>
+        </section>
+    </main>
+
+    <script src="main.js"></script>
+</body>
+
+</html>
