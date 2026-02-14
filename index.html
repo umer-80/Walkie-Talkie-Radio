@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>P2P Global Radio - Multi-Peer</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <header>
+        <h1>P2P Global Radio</h1>
+        <p id="connection-status">Network: Offline</p>
+    </header>
+
+    <main>
+        <section class="radio-section">
+            <div class="radio-chassis">
+                <div class="radio-antenna"></div>
+                <div class="radio-body">
+                    <div class="speaker-grill"></div>
+
+                    <div class="ui-panel">
+                        <div class="display-container">
+                            <div class="signal-meter">
+                                <div class="meter-bar" id="meter-bar"></div>
+                                <span class="meter-label">MESH</span>
+                            </div>
+                            <div class="main-display">
+                                <span id="frequency">CH-01</span>
+                                <div class="led-indicators">
+                                    <div class="led" id="tx-led">TX</div>
+                                    <div class="led" id="rx-led">RX</div>
+                                </div>
+                            </div>
+                            <div class="mode-toggle">
+                                <label class="switch">
+                                    <input type="checkbox" id="local-mode-toggle">
+                                    <span class="slider"></span>
+                                </label>
+                                <span class="mode-label">LOCAL P2P (OFFLINE)</span>
+                            </div>
+                        </div>
+
+                        <div class="controls">
+                            <div class="volume-knob"></div>
+                            <button id="ptt-button" class="ptt-btn">PTT</button>
+                        </div>
+                    </div>
+
+                    <div class="branding">P2P GLOBAL RADIO</div>
+                </div>
+            </div>
+        </section>
+
+        <section class="signaling-section">
+            <details open>
+                <summary>Network Connections (Group Talk)</summary>
+                <div class="peer-manager">
+                    <div id="peer-list" class="peer-list">
+                        <!-- Dynamic Peer Slots -->
+                    </div>
+                    <button id="add-peer-slot" class="add-slot-btn">+ Connect New Peer</button>
+                </div>
+            </details>
+        </section>
+
+        <!-- Peer Template (Hidden) -->
+        <template id="peer-slot-template">
+            <div class="peer-card card" data-peer-id="">
+                <div class="peer-header">
+                    <h4>New Connection</h4>
+                    <span class="peer-status">Idle</span>
+                </div>
+
+                <div class="step step-1">
+                    <button class="btn-offer">1. Get Offer</button>
+                    <textarea class="out-box" readonly placeholder="Copy Key..."></textarea>
+                </div>
+
+                <div class="step step-2">
+                    <textarea class="in-box" placeholder="Paste Key..."></textarea>
+                    <button class="btn-action">2. Paste/Answer</button>
+                </div>
+
+                <button class="btn-remove">Remove</button>
+            </div>
+        </template>
+    </main>
+
+    <script src="main.js"></script>
+</body>
+
+</html>
