@@ -35,6 +35,7 @@ header h1 {
     margin: 0;
     background: linear-gradient(135deg, #fff 0%, #666 100%);
     -webkit-background-clip: text;
+    background-clip: text;
     -webkit-text-fill-color: transparent;
 }
 
@@ -364,14 +365,18 @@ details summary {
 }
 
 .modal-content {
-    width: 100%;
-    max-width: 420px;
-    border-radius: 32px;
-    padding: 35px;
+    width: 90%;
+    max-width: 400px;
+    max-height: 95vh;
+    border-radius: 28px;
+    padding: 24px;
     position: relative;
     color: white;
     text-align: center;
     border: 1px solid rgba(var(--rugged-accent-rgba), 0.2);
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
 }
 
 .modal-header {
@@ -392,9 +397,13 @@ details summary {
 .close-btn {
     background: none;
     border: none;
-    color: #666;
+    color: var(--rugged-accent);
     font-size: 2.2rem;
     cursor: pointer;
+    line-height: 1;
+    padding: 10px;
+    margin: -10px;
+    z-index: 10;
 }
 
 .sync-step {
@@ -426,15 +435,16 @@ details summary {
 }
 
 .qr-box-premium {
-    width: 220px;
-    height: 220px;
+    width: min(240px, 60vw);
+    height: min(240px, 60vw);
     background: white;
-    border-radius: 20px;
-    margin: 20px auto;
+    border-radius: 16px;
+    margin: 15px auto;
     display: flex;
     justify-content: center;
     align-items: center;
-    padding: 15px;
+    padding: 12px;
+    flex-shrink: 0;
 }
 
 .qr-box-premium img,
@@ -466,16 +476,18 @@ details summary {
 }
 
 #scanner-view-modal {
-    width: 280px;
-    height: 280px;
+    width: min(280px, 70vw);
+    height: min(280px, 70vw);
     background: #000;
-    border-radius: 20px;
-    margin: 20px auto;
+    border-radius: 16px;
+    margin: 15px auto;
     overflow: hidden;
     border: 2px solid var(--rugged-accent);
     display: flex;
     justify-content: center;
     align-items: center;
+    flex-shrink: 0;
+    position: relative;
 }
 
 #scanner-view-modal video {

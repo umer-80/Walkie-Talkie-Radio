@@ -95,6 +95,7 @@ function playRogerBeep() {
 
 function setupEventListeners() {
     openSyncBtn.onclick = () => startGuidedSync();
+    closeSyncBtn.onclick = closeSyncModal;
     finishSyncBtn.onclick = closeSyncModal;
     modalShareBtn.onclick = shareModalQR;
     modalImportBtn.onclick = () => importQRImage();
@@ -140,6 +141,7 @@ async function startGuidedSync() {
             });
         } catch (e) {
             console.error("QR Fail:", e);
+            modalQrBox.innerHTML = '<div style="color:#ff4444; font-size:0.6rem;">QR Generation Failed. Try again.</div>';
         }
         modalShareBtn.disabled = false;
     });
@@ -183,10 +185,16 @@ async function shareModalQR() {
         } else {
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
+            a.style.display = 'none';
             a.href = url;
             a.download = 'radio-invite.png';
+            document.body.appendChild(a);
             a.click();
-            alert("Share not supported on this device. Image saved to gallery.");
+            setTimeout(() => {
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }, 100);
+            alert("Image saved to your downloads/gallery.");
         }
     } catch (e) {
         console.error(e);
@@ -424,10 +432,6 @@ let html5QrCodeModal = null;
 async function startQRScannerModal() {
     if (getSyncStep() !== 2) return;
 
-    if (!window.isSecureContext && location.hostname !== "localhost") {
-        alert("Camera requires HTTPS. Please use a secure connection or the APK.");
-    }
-
     // Cleanup existing instance
     if (html5QrCodeModal) {
         try { await html5QrCodeModal.stop(); } catch (e) { }
@@ -435,9 +439,12 @@ async function startQRScannerModal() {
     }
 
     const scannerContainer = document.getElementById('scanner-view-modal');
+    if (!scannerContainer) return;
+
     // Ensure button is there
-    if (!document.getElementById('start-cam-btn')) {
-        scannerContainer.innerHTML = '<button id="start-cam-btn" class="btn-primary" style="font-size: 0.7rem; padding: 10px 20px;">ACTIVATE CAMERA</button>';
+    const existingBtn = document.getElementById('start-cam-btn');
+    if (!existingBtn) {
+        scannerContainer.innerHTML = '<button id="start-cam-btn" class="btn-primary" style="font-size: 0.8rem; padding: 12px 24px; position:relative; z-index:100;">ACTIVATE CAMERA</button>';
     }
 
     const camBtn = document.getElementById('start-cam-btn');
@@ -445,12 +452,13 @@ async function startQRScannerModal() {
 
     html5QrCodeModal = new Html5Qrcode("scanner-view-modal");
 
-    const startCam = async () => {
+    const startCam = async (e) => {
+        if (e) { e.preventDefault(); e.stopPropagation(); }
         try {
             camBtn.innerText = "STARTING...";
             await html5QrCodeModal.start(
                 { facingMode: "environment" },
-                { fps: 20, qrbox: { width: 250, height: 250 } },
+                { fps: 20, qrbox: (width, height) => ({ width: Math.min(width, height) * 0.8, height: Math.min(width, height) * 0.8 }) },
                 (text) => {
                     handleScannedData(text);
                     stopQRScannerModal();
@@ -460,14 +468,14 @@ async function startQRScannerModal() {
         } catch (err) {
             console.error(err);
             camBtn.innerText = "ACTIVATE CAMERA";
-            alert("Camera Error: Please ensure you granted permissions.");
+            // alert("Camera error: " + err);
         }
     };
 
     camBtn.onclick = startCam;
 
-    // Auto-attempt for convenience
-    setTimeout(startCam, 500);
+    // Attempt auto-start with a small delay
+    setTimeout(() => { if (getSyncStep() === 2) startCam(); }, 800);
 }
 
 function stopQRScannerModal() {
