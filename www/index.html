@@ -12,6 +12,7 @@
 </head>
 
 <body>
+    <div id="qr-reader-hidden" style="display:none"></div>
     <header>
         <h1>P2P Global Radio</h1>
         <p id="connection-status">Network: Offline</p>
@@ -112,6 +113,7 @@
                     </div>
                     <div class="modal-actions">
                         <button id="go-to-step2-btn" class="btn-primary">I'm Ready to Scan Partner →</button>
+                        <button id="modal-copy-btn" class="btn-modal">COPY MY KEY (TEXT)</button>
                         <button id="modal-share-btn" class="btn-modal" disabled>SHARE INVITE IMAGE</button>
                     </div>
                 </div>
@@ -124,6 +126,8 @@
                     <div class="modal-actions">
                         <button id="go-to-step1-btn" class="btn-modal">← My QR Code</button>
                         <button id="modal-import-btn" class="btn-modal">IMPORT FROM GALLERY</button>
+                        <button id="modal-manual-btn" class="btn-modal"
+                            style="border-color: rgba(var(--rugged-accent-rgba), 0.3);">PASTE KEY MANUALLY</button>
                     </div>
                 </div>
 

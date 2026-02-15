@@ -25,7 +25,9 @@ const openSyncBtn = document.getElementById('open-sync-btn');
 const closeSyncBtn = document.getElementById('close-modal-btn');
 const modalQrBox = document.getElementById('modal-qr');
 const modalShareBtn = document.getElementById('modal-share-btn');
+const modalCopyBtn = document.getElementById('modal-copy-btn');
 const modalImportBtn = document.getElementById('modal-import-btn');
+const modalManualBtn = document.getElementById('modal-manual-btn');
 const finishSyncBtn = document.getElementById('finish-sync-btn');
 const syncSteps = document.querySelectorAll('.sync-step');
 const syncDots = document.querySelectorAll('.dot');
@@ -98,7 +100,9 @@ function setupEventListeners() {
     closeSyncBtn.onclick = closeSyncModal;
     finishSyncBtn.onclick = closeSyncModal;
     modalShareBtn.onclick = shareModalQR;
-    modalImportBtn.onclick = () => importQRImage(null);
+    modalCopyBtn.onclick = copyModalKey;
+    modalImportBtn.onclick = () => importQRImage();
+    modalManualBtn.onclick = promptManualKey;
 
     // New Step Navigation Buttons
     document.getElementById('go-to-step2-btn').onclick = () => setSyncStep(2);
@@ -193,11 +197,17 @@ async function shareModalQR() {
         }
     } catch (e) {
         console.error(e);
-        const card = document.querySelector(`[data-peer-id="${activeSyncPeerId}"]`);
-        const val = card.querySelector('.out-box').value;
-        navigator.clipboard.writeText(val);
-        alert("Copying key to clipboard...");
+        copyModalKey();
     }
+}
+
+function copyModalKey() {
+    const card = document.querySelector(`[data-peer-id="${activeSyncPeerId}"]`);
+    if (!card) return;
+    const val = card.querySelector('.out-box').value;
+    navigator.clipboard.writeText(val).then(() => {
+        alert("Key copied as text! Send this to your friend.");
+    });
 }
 
 // Peer Management
@@ -457,6 +467,27 @@ function importQRImage() {
         scanner.scanFile(file, true).then(text => handleScannedData(text)).catch(e => alert("No QR found"));
     };
     input.click();
+}
+
+function importQRImage() {
+    const input = document.createElement('input');
+    input.type = 'file'; input.accept = 'image/*';
+    input.onchange = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const scanner = new Html5Qrcode("qr-reader-hidden");
+        scanner.scanFile(file, true).then(text => handleScannedData(text)).catch(e => alert("No QR found"));
+    };
+    input.click();
+}
+
+function promptManualKey() {
+    const key = prompt("Paste the Key (long text) received from your friend:");
+    if (key && key.length > 50) {
+        handleScannedData(key);
+    } else if (key) {
+        alert("Invalid key format.");
+    }
 }
 
 init();
