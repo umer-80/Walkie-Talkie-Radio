@@ -60,45 +60,104 @@
         <section class="signaling-section">
             <details open>
                 <summary>Network Connections (Group Talk)</summary>
-                <div class="peer-manager">
-                    <div id="peer-list" class="peer-list">
-                        <!-- Dynamic Peer Slots -->
-                    </div>
-                    <button id="add-peer-slot" class="add-slot-btn">+ Connect New Peer</button>
+                <div class="sync-action">
+                    <button id="open-sync-btn" class="btn-primary">📡 Sync New Radio</button>
+                </div>
+
+                <div id="peer-list" class="peer-list">
+                    <!-- Dynamic Peer Slots will appear here when connected -->
                 </div>
             </details>
         </section>
 
-        <!-- Peer Template (Hidden) -->
+        <!-- Sleeker Peer Card Template -->
         <template id="peer-slot-template">
-            <div class="peer-card card" data-peer-id="">
-                <div class="peer-header">
-                    <h4>New Connection</h4>
-                    <span class="peer-status">Idle</span>
+            <div class="peer-card" data-peer-id="">
+                <div class="peer-info">
+                    <span class="peer-label">RADIO:</span>
+                    <span class="peer-status">IDLE</span>
                 </div>
+                <button class="btn-remove-mini">&times;</button>
 
-                <div class="step step-1">
-                    <button class="btn-offer">1. Get Global Key</button>
-                    <div class="qr-container">
-                        <div class="qr-code"></div>
-                        <button class="btn-share" disabled>Share QR</button>
-                    </div>
-                    <textarea class="out-box" readonly placeholder="Key will appear here..."></textarea>
+                <!-- Hidden backend state -->
+                <div style="display:none">
+                    <textarea class="out-box"></textarea>
+                    <textarea class="in-box"></textarea>
+                    <button class="btn-offer"></button>
+                    <button class="btn-action"></button>
+                    <div class="qr-code"></div>
+                    <button class="btn-share"></button>
+                    <button class="btn-scan"></button>
+                    <button class="btn-import"></button>
                 </div>
-
-                <div class="step step-2">
-                    <div class="scan-actions">
-                        <button class="btn-scan">Scan QR</button>
-                        <button class="btn-import">Import Image</button>
-                    </div>
-                    <textarea class="in-box" placeholder="Or paste Key here..."></textarea>
-                    <button class="btn-action">2. Connect Peer</button>
-                </div>
-
-                <button class="btn-remove">Remove</button>
             </div>
         </template>
     </main>
+
+    <!-- PREMIUM SYNC MODAL -->
+    <div id="sync-modal" class="modal-overlay">
+        <div class="modal-content glass">
+            <div class="modal-header">
+                <h2>SYNC CENTER</h2>
+                <button id="close-modal-btn" class="close-btn">&times;</button>
+            </div>
+
+            <div id="sync-steps">
+                <div class="sync-step active" id="step-1">
+                    <div class="step-label">STEP 1: INVITE</div>
+                    <h3>SHARE YOUR KEY</h3>
+                    <p>Show this code to your partner radio.</p>
+                    <div class="qr-box-premium" id="modal-qr">
+                        <div class="qr-loading">GATHERING SIGNAL...</div>
+                    </div>
+                    <div class="modal-actions">
+                        <button id="go-to-step2-btn" class="btn-primary">I'm Ready to Scan Partner →</button>
+                        <button id="modal-share-btn" class="btn-modal" disabled>SHARE INVITE IMAGE</button>
+                    </div>
+                </div>
+
+                <div class="sync-step" id="step-2">
+                    <div class="step-label">STEP 2: SCAN</div>
+                    <h3>SCAN PARTNER</h3>
+                    <p>Point camera at their screen.</p>
+                    <div id="scanner-view-modal"></div>
+                    <div class="modal-actions">
+                        <button id="go-to-step1-btn" class="btn-modal">← My QR Code</button>
+                        <button id="modal-import-btn" class="btn-modal">IMPORT FROM GALLERY</button>
+                    </div>
+                </div>
+
+                <div class="sync-step" id="step-3">
+                    <h3>SYNC SUCCESSFUL</h3>
+                    <div class="success-icon">✔️</div>
+                    <p>Connection established across networks.</p>
+                    <button id="finish-sync-btn" class="btn-primary">CLOSE</button>
+                </div>
+            </div>
+
+            <div class="handshake-guide"
+                style="font-size: 0.6rem; color: #555; margin-top: 20px; padding: 10px; border-top: 1px solid #1a1a1a;">
+                <b>HOW TO CONNECT:</b><br>
+                1. You show QR → Friend scans it.<br>
+                2. Friend shows NEW QR → You scan it.<br>
+                3. Connected!
+            </div>
+
+            <div class="modal-footer">
+                <div class="dot active"></div>
+                <div class="dot"></div>
+                <div class="dot"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="reconnecting-overlay">
+        <div class="overlay-content">
+            <div class="spinner"></div>
+            <h3>Signal Dropped</h3>
+            <p>Reconnecting to peer...</p>
+        </div>
+    </div>
 
     <div id="reconnecting-overlay">
         <div class="overlay-content">

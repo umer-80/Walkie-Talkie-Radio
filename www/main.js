@@ -1,13 +1,6 @@
 /**
- * P2P Global Radio - Mesh Network Engine (Phase 4)
+ * P2P Global Radio - Premium Sync Engine (Phase 5 Refinement)
  */
-
-const pcConfig = {
-    iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' }
-    ]
-};
 
 let peers = {}; // Dictionary of RTCPeerConnection objects
 let localStream;
@@ -15,7 +8,27 @@ let audioContext;
 let staticNode;
 let gainNode;
 
+// DOM Elements
 const localModeToggle = document.getElementById('local-mode-toggle');
+const reconnectingOverlay = document.getElementById('reconnecting-overlay');
+const pttButton = document.getElementById('ptt-button');
+const txLed = document.getElementById('tx-led');
+const rxLed = document.getElementById('rx-led');
+const meterBar = document.getElementById('meter-bar');
+const peerList = document.getElementById('peer-list');
+const peerTemplate = document.getElementById('peer-slot-template');
+const connectionStatus = document.getElementById('connection-status');
+
+// Premium Modal Elements
+const syncModal = document.getElementById('sync-modal');
+const openSyncBtn = document.getElementById('open-sync-btn');
+const closeSyncBtn = document.getElementById('close-modal-btn');
+const modalQrBox = document.getElementById('modal-qr');
+const modalShareBtn = document.getElementById('modal-share-btn');
+const modalImportBtn = document.getElementById('modal-import-btn');
+const finishSyncBtn = document.getElementById('finish-sync-btn');
+const syncSteps = document.querySelectorAll('.sync-step');
+const syncDots = document.querySelectorAll('.dot');
 
 // Peer configurations
 const webConfig = {
@@ -29,40 +42,24 @@ const webConfig = {
 };
 
 const localConfig = {
-    iceServers: [] // In local mode, we rely on local network candidates only
+    iceServers: []
 };
 
 let currentPCConfig = webConfig;
-const pttButton = document.getElementById('ptt-button');
-const txLed = document.getElementById('tx-led');
-const rxLed = document.getElementById('rx-led');
-const meterBar = document.getElementById('meter-bar');
-const peerList = document.getElementById('peer-list');
-const addPeerSlotBtn = document.getElementById('add-peer-slot');
-const peerTemplate = document.getElementById('peer-slot-template');
+let activeSyncPeerId = null;
 
 // Initialization
 async function init() {
     setupEventListeners();
     setupAudioContext();
     await setupLocalStream();
-
-    // Attempt to restore previous sessions
-    const restored = await tryReconnectAll();
-    if (!restored) {
-        addPeerSlot(); // Start with one empty slot if none restored
-    }
+    await tryReconnectAll();
 }
 
 async function setupLocalStream() {
     try {
         localStream = await navigator.mediaDevices.getUserMedia({
-            audio: {
-                echoCancellation: true,
-                noiseSuppression: true,
-                autoGainControl: false,
-                channelCount: 1
-            }
+            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: false, channelCount: 1 }
         });
     } catch (err) {
         console.error('Error accessing media devices:', err);
@@ -71,21 +68,16 @@ async function setupLocalStream() {
 
 function setupAudioContext() {
     audioContext = new (window.AudioContext || window.webkitAudioContext)();
-
     const bufferSize = 2 * audioContext.sampleRate;
     const noiseBuffer = audioContext.createBuffer(1, bufferSize, audioContext.sampleRate);
     const output = noiseBuffer.getChannelData(0);
-    for (let i = 0; i < bufferSize; i++) {
-        output[i] = Math.random() * 2 - 1;
-    }
+    for (let i = 0; i < bufferSize; i++) output[i] = Math.random() * 2 - 1;
 
     staticNode = audioContext.createBufferSource();
     staticNode.buffer = noiseBuffer;
     staticNode.loop = true;
-
     gainNode = audioContext.createGain();
     gainNode.gain.value = 0.01;
-
     staticNode.connect(gainNode);
     gainNode.connect(audioContext.destination);
 }
@@ -93,7 +85,6 @@ function setupAudioContext() {
 function playRogerBeep() {
     const osc = audioContext.createOscillator();
     const g = audioContext.createGain();
-    osc.type = 'sine';
     osc.frequency.setValueAtTime(1000, audioContext.currentTime);
     osc.frequency.exponentialRampToValueAtTime(800, audioContext.currentTime + 0.1);
     g.gain.setValueAtTime(0.1, audioContext.currentTime);
@@ -103,15 +94,18 @@ function playRogerBeep() {
 }
 
 function setupEventListeners() {
-    addPeerSlotBtn.addEventListener('click', addPeerSlot);
+    openSyncBtn.onclick = () => startGuidedSync();
+    closeSyncBtn.onclick = closeSyncModal;
+    finishSyncBtn.onclick = closeSyncModal;
+    modalShareBtn.onclick = shareModalQR;
+    modalImportBtn.onclick = () => importQRImage(null);
+
+    // New Step Navigation Buttons
+    document.getElementById('go-to-step2-btn').onclick = () => setSyncStep(2);
+    document.getElementById('go-to-step1-btn').onclick = () => setSyncStep(1);
 
     localModeToggle.addEventListener('change', (e) => {
-        if (e.target.checked) {
-            currentPCConfig = localConfig;
-            alert("LOCAL MODE ACTIVE: Connect via Wi-Fi Direct or shared Hotspot. Both devices must be on the same local network.");
-        } else {
-            currentPCConfig = webConfig;
-        }
+        currentPCConfig = e.target.checked ? localConfig : webConfig;
         updateGlobalStatus();
     });
 
@@ -120,63 +114,73 @@ function setupEventListeners() {
     pttButton.onpointerleave = (e) => { e.preventDefault(); stopTransmission(); };
 }
 
+// PREMIUM SYNC FLOW
+async function startGuidedSync() {
+    activeSyncPeerId = addPeerSlot();
+    setSyncStep(1);
+    syncModal.style.display = 'flex';
+
+    const card = document.querySelector(`[data-peer-id="${activeSyncPeerId}"]`);
+    const outBox = card.querySelector('.out-box');
+    const statusText = card.querySelector('.peer-status');
+
+    modalQrBox.innerHTML = '<div class="qr-loading">GATHERING GLOBAL SIGNAL...</div>';
+    modalShareBtn.disabled = true;
+
+    createOffer(activeSyncPeerId, outBox, statusText, (sdp) => {
+        modalQrBox.innerHTML = '';
+        new QRCode(modalQrBox, { text: sdp, width: 200, height: 200 });
+        modalShareBtn.disabled = false;
+
+        // Auto-switch to scan if user stays on this step
+        setTimeout(() => { if (getSyncStep() === 1) setSyncStep(2); }, 15000);
+    });
+
+    startQRScannerModal();
+}
+
+function setSyncStep(step) {
+    syncSteps.forEach((s, i) => s.classList.toggle('active', i === step - 1));
+    syncDots.forEach((d, i) => d.classList.toggle('active', i === step - 1));
+}
+
+function getSyncStep() {
+    let active = 1;
+    syncSteps.forEach((s, i) => { if (s.classList.contains('active')) active = i + 1; });
+    return active;
+}
+
+function closeSyncModal() {
+    syncModal.style.display = 'none';
+    stopQRScannerModal();
+}
+
+async function shareModalQR() {
+    const qrImg = modalQrBox.querySelector('img');
+    if (!qrImg) return;
+    try {
+        const blob = await (await fetch(qrImg.src)).blob();
+        const file = new File([blob], 'radio-invite.png', { type: 'image/png' });
+        if (navigator.share) {
+            await navigator.share({ files: [file], title: 'Radio Invite', text: 'Scan to connect!' });
+        } else {
+            alert('Share not supported on this browser.');
+        }
+    } catch (e) { console.error(e); }
+}
+
 // Peer Management
 function addPeerSlot(existingPeerId = null) {
     const peerId = existingPeerId || 'peer-' + Date.now();
+    if (document.querySelector(`[data-peer-id="${peerId}"]`)) return peerId;
+
     const clone = peerTemplate.content.cloneNode(true);
     const card = clone.querySelector('.peer-card');
     card.dataset.peerId = peerId;
 
-    const btnOffer = card.querySelector('.btn-offer');
-    const btnAction = card.querySelector('.btn-action');
-    const btnRemove = card.querySelector('.btn-remove');
-    const outBox = card.querySelector('.out-box');
-    const inBox = card.querySelector('.in-box');
-    const statusText = card.querySelector('.peer-status');
-
-    // QR Elements
-    const qrDiv = card.querySelector('.qr-code');
-    const btnShare = card.querySelector('.btn-share');
-    const btnScan = card.querySelector('.btn-scan');
-    const btnImport = card.querySelector('.btn-import');
-
-    let qrcode = null;
-
-    btnOffer.onclick = () => {
-        createOffer(peerId, outBox, statusText, (sdp) => {
-            if (!qrcode) {
-                qrcode = new QRCode(qrDiv, { text: sdp, width: 128, height: 128 });
-            } else {
-                qrcode.clear();
-                qrcode.makeCode(sdp);
-            }
-            btnShare.disabled = false;
-        });
-    };
-
-    btnShare.onclick = async () => {
-        const qrImg = qrDiv.querySelector('img');
-        if (!qrImg) return;
-        try {
-            const blob = await (await fetch(qrImg.src)).blob();
-            const file = new File([blob], 'radio-key.png', { type: 'image/png' });
-            if (navigator.share) {
-                await navigator.share({ files: [file], title: 'P2P Radio Key', text: 'Scan to connect!' });
-            } else {
-                alert('Sharing not supported. Please screenshot.');
-            }
-        } catch (e) { console.error(e); }
-    };
-
-    btnScan.onclick = () => startQRScanner(inBox);
-    btnImport.onclick = () => importQRImage(inBox);
-    btnAction.onclick = () => handlePeerAction(peerId, inBox, outBox, statusText);
-
-    btnRemove.onclick = () => {
-        if (peers[peerId]) {
-            peers[peerId].close();
-            delete peers[peerId];
-        }
+    card.querySelector('.btn-remove-mini').onclick = () => {
+        if (peers[peerId]) peers[peerId].close();
+        delete peers[peerId];
         localStorage.removeItem('radio_session_' + peerId);
         card.remove();
         updateGlobalStatus();
@@ -190,85 +194,68 @@ async function createOffer(peerId, outBox, statusText, onReady) {
     const pc = new RTCPeerConnection(currentPCConfig);
     peers[peerId] = pc;
     setupPeerListeners(peerId, statusText);
-
-    localStream.getTracks().forEach(track => {
-        const sender = pc.addTrack(track, localStream);
-        sender.track.enabled = false;
-    });
+    localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
 
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
 
-    pc.onicegatheringstatechange = () => {
-        if (pc.iceGatheringState === 'complete') {
-            const sdp = btoa(JSON.stringify(pc.localDescription));
-            outBox.value = sdp;
-            statusText.innerText = 'Offer Ready (Global)';
-            if (onReady) onReady(sdp);
-        }
+    let sdpSent = false;
+    const sendSDP = () => {
+        if (sdpSent) return;
+        const sdp = btoa(JSON.stringify(pc.localDescription));
+        outBox.value = sdp;
+        if (onReady) onReady(sdp);
+        sdpSent = true;
     };
 
-    pc.onicecandidate = (event) => {
-        if (!event.candidate && pc.iceGatheringState !== 'complete') {
-            const sdp = btoa(JSON.stringify(pc.localDescription));
-            outBox.value = sdp;
-            statusText.innerText = 'Offer Ready';
-            if (onReady) onReady(sdp);
-        }
+    pc.onicegatheringstatechange = () => { if (pc.iceGatheringState === 'complete') sendSDP(); };
+    pc.onicecandidate = (e) => {
+        if (!e.candidate || e.candidate.candidate.includes('srflx')) sendSDP();
     };
+    setTimeout(sendSDP, 5000); // Max wait 5s
 }
 
-async function handlePeerAction(peerId, inBox, outBox, statusText) {
-    const payload = inBox.value.trim();
-    if (!payload) return;
-
+async function handlePeerAction(peerId, payload, outBox, statusText, onAnswerReady) {
     try {
         const sdp = JSON.parse(atob(payload));
-
         if (sdp.type === 'offer') {
-            // We are the joiner
             const pc = new RTCPeerConnection(currentPCConfig);
             peers[peerId] = pc;
             setupPeerListeners(peerId, statusText);
-
-            localStream.getTracks().forEach(track => {
-                const sender = pc.addTrack(track, localStream);
-                sender.track.enabled = false;
-            });
-
+            localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
             await pc.setRemoteDescription(new RTCSessionDescription(sdp));
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
 
-            pc.onicegatheringstatechange = () => {
-                if (pc.iceGatheringState === 'complete') {
-                    outBox.value = btoa(JSON.stringify(pc.localDescription));
-                    statusText.innerText = 'Answer Ready (Global)';
-                }
+            let sdpSent = false;
+            const sendAnswer = () => {
+                if (sdpSent) return;
+                const aSdp = btoa(JSON.stringify(pc.localDescription));
+                outBox.value = aSdp;
+                if (onAnswerReady) onAnswerReady(aSdp);
+                sdpSent = true;
             };
 
-            pc.onicecandidate = (event) => {
-                if (!event.candidate && pc.iceGatheringState !== 'complete') {
-                    outBox.value = btoa(JSON.stringify(pc.localDescription));
-                    statusText.innerText = 'Answer Ready';
-                }
-            };
-        } else if (sdp.type === 'answer') {
-            // We are the host completing the handshake
-            if (!peers[peerId]) return;
-            await peers[peerId].setRemoteDescription(new RTCSessionDescription(sdp));
+            pc.onicegatheringstatechange = () => { if (pc.iceGatheringState === 'complete') sendAnswer(); };
+            pc.onicecandidate = (e) => { if (!e.candidate || e.candidate.candidate.includes('srflx')) sendAnswer(); };
+            setTimeout(sendAnswer, 5000);
+        } else {
+            if (peers[peerId]) await peers[peerId].setRemoteDescription(new RTCSessionDescription(sdp));
         }
-    } catch (e) {
-        alert('Invalid Key Error');
-        console.error(e);
-    }
+    } catch (e) { console.error(e); }
 }
 
 function setupPeerListeners(peerId, statusText) {
     const pc = peers[peerId];
-
     pc.oniceconnectionstatechange = () => {
-        statusText.innerText = pc.iceConnectionState;
+        statusText.innerText = pc.iceConnectionState.toUpperCase();
+        if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
+            reconnectingOverlay.style.display = 'flex';
+        } else if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+            reconnectingOverlay.style.display = 'none';
+            saveSession(peerId);
+            if (activeSyncPeerId === peerId && getSyncStep() < 3) setSyncStep(3);
+        }
         updateGlobalStatus();
     };
 
@@ -276,60 +263,69 @@ function setupPeerListeners(peerId, statusText) {
         const audio = new Audio();
         audio.srcObject = event.streams[0];
         audio.play();
-
         event.track.onunmute = () => rxLed.classList.add('active-rx');
         event.track.onmute = () => {
-            // Check if ANY peer is still transmitting to us
-            const anyActive = Object.values(peers).some(p =>
-                p.getReceivers().some(r => r.track && !r.track.muted)
-            );
-            if (!anyActive) rxLed.classList.remove('active-rx');
+            const active = Object.values(peers).some(p => p.getReceivers().some(r => r.track && !r.track.muted));
+            if (!active) rxLed.classList.remove('active-rx');
         };
     };
 }
 
-// PTT Logic (Broadcast to ALL peers)
+// PTT Logic
 function startTransmission() {
     if (Object.keys(peers).length === 0) return;
     if (audioContext.state === 'suspended') audioContext.resume();
-
     txLed.classList.add('active-tx');
-
     Object.values(peers).forEach(pc => {
         if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
-            pc.getSenders().forEach(sender => {
-                if (sender.track) sender.track.enabled = true;
-            });
+            pc.getSenders().forEach(s => { if (s.track) s.track.enabled = true; });
         }
     });
 }
 
 function stopTransmission() {
     if (!txLed.classList.contains('active-tx')) return;
-
     txLed.classList.remove('active-tx');
     playRogerBeep();
+    Object.values(peers).forEach(pc => pc.getSenders().forEach(s => { if (s.track) s.track.enabled = false; }));
+}
 
-    Object.values(peers).forEach(pc => {
-        pc.getSenders().forEach(sender => {
-            if (sender.track) sender.track.enabled = false;
-        });
-    });
+// Session
+function saveSession(peerId) {
+    const pc = peers[peerId];
+    if (!pc || !pc.remoteDescription) return;
+    localStorage.setItem('radio_session_' + peerId, JSON.stringify({
+        localDescription: pc.localDescription, remoteDescription: pc.remoteDescription
+    }));
+}
+
+async function tryReconnectAll() {
+    for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key.startsWith('radio_session_')) {
+            const peerId = key.replace('radio_session_', '');
+            const data = JSON.parse(localStorage.getItem(key));
+            addPeerSlot(peerId);
+            const statusText = document.querySelector(`[data-peer-id="${peerId}"] .peer-status`);
+            const pc = new RTCPeerConnection(currentPCConfig);
+            peers[peerId] = pc;
+            setupPeerListeners(peerId, statusText);
+            localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+            try {
+                await pc.setRemoteDescription(new RTCSessionDescription(data.remoteDescription));
+                await pc.setLocalDescription(new RTCSessionDescription(data.localDescription));
+            } catch (e) { localStorage.removeItem(key); }
+        }
+    }
 }
 
 function updateGlobalStatus() {
-    const connectedCount = Object.values(peers).filter(pc =>
-        pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed'
-    ).length;
-
-    if (connectedCount > 0) {
-        connectionStatus.innerText = `Network: ${connectedCount} Peer(s) Connected`;
-        connectionStatus.style.color = 'var(--display-text)';
+    const connected = Object.values(peers).filter(pc => pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed').length;
+    connectionStatus.innerText = connected > 0 ? `NETWORK: ${connected} PEER(S) CONNECTED` : 'NETWORK: OFFLINE';
+    connectionStatus.style.color = connected > 0 ? 'var(--display-text)' : '#888';
+    if (connected > 0) {
         try { if (staticNode.state !== 'running') staticNode.start(); } catch (e) { }
         startStatsMonitoring();
-    } else {
-        connectionStatus.innerText = 'Network: Offline';
-        connectionStatus.style.color = '#888';
     }
 }
 
@@ -337,80 +333,73 @@ let statsInterval = null;
 function startStatsMonitoring() {
     if (statsInterval) return;
     statsInterval = setInterval(async () => {
-        const connectedPeers = Object.values(peers).filter(pc =>
-            pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed'
-        );
-
-        if (connectedPeers.length === 0) {
+        const connected = Object.values(peers).filter(pc => pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed');
+        if (connected.length === 0) {
             clearInterval(statsInterval);
             statsInterval = null;
             meterBar.style.width = '0%';
             return;
         }
-
-        let totalRtt = 0;
-        let count = 0;
-
-        for (const pc of connectedPeers) {
-            const stats = await pc.getStats();
-            stats.forEach(report => {
-                if (report.type === 'candidate-pair' && report.state === 'succeeded' && report.currentRoundTripTime) {
-                    totalRtt += report.currentRoundTripTime;
-                    count++;
+        let totalRtt = 0, count = 0;
+        for (const pc of connected) {
+            (await pc.getStats()).forEach(r => {
+                if (r.type === 'candidate-pair' && r.state === 'succeeded' && r.currentRoundTripTime) {
+                    totalRtt += r.currentRoundTripTime; count++;
                 }
             });
         }
-
         if (count > 0) {
-            const avgRtt = totalRtt / count;
-            let strength = 100 - (avgRtt * 200);
-            strength = Math.max(10, Math.min(100, strength));
-            meterBar.style.width = strength + '%';
+            let strength = 100 - ((totalRtt / count) * 200);
+            meterBar.style.width = Math.max(10, Math.min(100, strength)) + '%';
         } else {
-            meterBar.style.width = (connectedPeers.length * 25) + '%';
+            meterBar.style.width = (connected.length * 25) + '%';
         }
     }, 2000);
 }
 
-// QR Helper Functions
-function startQRScanner(inBox) {
-    const readerDiv = document.createElement('div');
-    readerDiv.id = 'qr-reader';
-    document.body.appendChild(readerDiv);
+// QR MODAL HELPERS
+let html5QrCodeModal = null;
+function startQRScannerModal() {
+    setSyncStep(getSyncStep()); // Ensure view correct
+    if (html5QrCodeModal) return;
+    html5QrCodeModal = new Html5Qrcode("scanner-view-modal");
+    html5QrCodeModal.start({ facingMode: "environment" }, { fps: 10, qrbox: 250 },
+        (decodedText) => handleScannedData(decodedText)
+    ).catch(e => console.error(e));
+}
 
-    const html5QrCode = new Html5Qrcode("qr-reader");
-    html5QrCode.start(
-        { facingMode: "environment" },
-        { fps: 10, qrbox: { width: 250, height: 250 } },
-        (decodedText) => {
-            inBox.value = decodedText;
-            html5QrCode.stop();
-            readerDiv.remove();
-        },
-        (errorMessage) => { /* ignore minor errors */ }
-    ).catch(err => {
-        alert("Camera access denied or error: " + err);
-        readerDiv.remove();
+function stopQRScannerModal() {
+    if (html5QrCodeModal) {
+        html5QrCodeModal.stop().then(() => {
+            html5QrCodeModal = null;
+            document.getElementById('scanner-view-modal').innerHTML = '';
+        });
+    }
+}
+
+function handleScannedData(data) {
+    const card = document.querySelector(`[data-peer-id="${activeSyncPeerId}"]`);
+    if (!card) return;
+    const outBox = card.querySelector('.out-box');
+    const statusText = card.querySelector('.peer-status');
+
+    handlePeerAction(activeSyncPeerId, data, outBox, statusText, (answerSdp) => {
+        // If we just generated an answer, we must show it to the other person!
+        modalQrBox.innerHTML = '';
+        new QRCode(modalQrBox, { text: answerSdp, width: 200, height: 200 });
+        setSyncStep(1); // Go back to show them the answer
+        modalShareBtn.disabled = false;
     });
 }
 
-function importQRImage(inBox) {
+function importQRImage() {
     const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/*';
+    input.type = 'file'; input.accept = 'image/*';
     input.onchange = (e) => {
         const file = e.target.files[0];
         if (!file) return;
-
-        const html5QrCode = new Html5Qrcode("qr-reader-hidden");
-        html5QrCode.scanFile(file, true)
-            .then(decodedText => {
-                inBox.value = decodedText;
-            })
-            .catch(err => {
-                alert("Could not find a valid QR code in this image.");
-                console.error(err);
-            });
+        const scanner = new Html5Qrcode("modal-qr"); // Temporary container
+        scanner.scanFile(file, true).then(text => handleScannedData(text)).catch(e => alert("No QR found"));
     };
     input.click();
 }
