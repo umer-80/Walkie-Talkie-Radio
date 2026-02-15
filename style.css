@@ -366,17 +366,20 @@ details summary {
 
 .modal-content {
     width: 90%;
-    max-width: 400px;
-    max-height: 95vh;
-    border-radius: 28px;
-    padding: 24px;
+    max-width: 380px;
+    max-height: 85vh;
+    /* Safe for various screen heights */
+    border-radius: 24px;
+    padding: 20px;
     position: relative;
     color: white;
     text-align: center;
-    border: 1px solid rgba(var(--rugged-accent-rgba), 0.2);
+    border: 1px solid rgba(var(--rugged-accent-rgba), 0.3);
     overflow-y: auto;
     display: flex;
     flex-direction: column;
+    justify-content: center;
+    box-sizing: border-box;
 }
 
 .modal-header {
@@ -435,15 +438,15 @@ details summary {
 }
 
 .qr-box-premium {
-    width: min(240px, 60vw);
-    height: min(240px, 60vw);
+    width: min(200px, 50vw);
+    height: min(200px, 50vw);
     background: white;
-    border-radius: 16px;
-    margin: 15px auto;
+    border-radius: 12px;
+    margin: 10px auto;
     display: flex;
     justify-content: center;
     align-items: center;
-    padding: 12px;
+    padding: 10px;
     flex-shrink: 0;
 }
 
@@ -468,19 +471,20 @@ details summary {
     background: rgba(255, 255, 255, 0.08);
     border: 1px solid rgba(255, 255, 255, 0.1);
     color: white;
-    padding: 16px;
-    border-radius: 16px;
-    font-size: 0.9rem;
+    padding: 14px;
+    border-radius: 12px;
+    font-size: 0.8rem;
     cursor: pointer;
     font-weight: 600;
+    -webkit-tap-highlight-color: transparent;
 }
 
 #scanner-view-modal {
-    width: min(280px, 70vw);
-    height: min(280px, 70vw);
+    width: min(240px, 60vw);
+    height: min(240px, 60vw);
     background: #000;
-    border-radius: 16px;
-    margin: 15px auto;
+    border-radius: 12px;
+    margin: 10px auto;
     overflow: hidden;
     border: 2px solid var(--rugged-accent);
     display: flex;

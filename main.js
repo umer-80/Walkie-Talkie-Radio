@@ -146,8 +146,10 @@ async function startGuidedSync() {
         modalShareBtn.disabled = false;
     });
 
-    // Start Camera attempt after short delay
-    setTimeout(startQRScannerModal, 1200);
+    // Start Camera after safety delay
+    setTimeout(() => {
+        if (getSyncStep() === 2) startQRScannerModal();
+    }, 1500);
 }
 
 function setSyncStep(step) {
@@ -175,14 +177,22 @@ async function shareModalQR() {
         if (qrImg.tagName === 'CANVAS') {
             blob = await new Promise(resolve => qrImg.toBlob(resolve, 'image/png'));
         } else {
-            blob = await (await fetch(qrImg.src)).blob();
+            // Robust blob fetch for APK
+            const response = await fetch(qrImg.src);
+            blob = await response.blob();
         }
 
         const file = new File([blob], 'radio-invite.png', { type: 'image/png' });
 
-        if (navigator.share) {
-            await navigator.share({ files: [file], title: 'Radio Invite', text: 'Scan this QR to connect to my radio!' });
+        // NATIVE SHARE (Best for APK)
+        if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+            await navigator.share({
+                files: [file],
+                title: 'Radio Sync Invite',
+                text: 'Scan this code to connect to my radio!'
+            });
         } else {
+            // FALLBACK: Download (May fail in some APK WebViews)
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.style.display = 'none';
@@ -193,12 +203,13 @@ async function shareModalQR() {
             setTimeout(() => {
                 document.body.removeChild(a);
                 URL.revokeObjectURL(url);
-            }, 100);
-            alert("Image saved to your downloads/gallery.");
+            }, 500);
+
+            alert("SHARE NOTICE:\nIf the image didn't save, please take a SCREENSHOT of the QR code and send it to your friend!");
         }
     } catch (e) {
-        console.error(e);
-        alert("Could not share image. Please take a screenshot of the QR code.");
+        console.error("Share Fail:", e);
+        alert("Please take a SCREENSHOT of this QR code to share it.");
     }
 }
 
@@ -441,24 +452,36 @@ async function startQRScannerModal() {
     const scannerContainer = document.getElementById('scanner-view-modal');
     if (!scannerContainer) return;
 
-    // Ensure button is there
-    const existingBtn = document.getElementById('start-cam-btn');
-    if (!existingBtn) {
+    // Ensure button is ready
+    let camBtn = document.getElementById('start-cam-btn');
+    if (!camBtn) {
         scannerContainer.innerHTML = '<button id="start-cam-btn" class="btn-primary" style="font-size: 0.8rem; padding: 12px 24px; position:relative; z-index:100;">ACTIVATE CAMERA</button>';
+        camBtn = document.getElementById('start-cam-btn');
     }
 
-    const camBtn = document.getElementById('start-cam-btn');
     camBtn.style.display = 'block';
+    camBtn.innerText = "ACTIVATE CAMERA";
 
     html5QrCodeModal = new Html5Qrcode("scanner-view-modal");
 
     const startCam = async (e) => {
         if (e) { e.preventDefault(); e.stopPropagation(); }
         try {
-            camBtn.innerText = "STARTING...";
+            camBtn.innerText = "PROBING HARDWARE...";
+
+            // Explicit permission probe for APK
+            await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+
+            camBtn.innerText = "STARTING SCANNER...";
             await html5QrCodeModal.start(
                 { facingMode: "environment" },
-                { fps: 20, qrbox: (width, height) => ({ width: Math.min(width, height) * 0.8, height: Math.min(width, height) * 0.8 }) },
+                {
+                    fps: 20,
+                    qrbox: (width, height) => {
+                        const size = Math.min(width, height) * 0.8;
+                        return { width: size, height: size };
+                    }
+                },
                 (text) => {
                     handleScannedData(text);
                     stopQRScannerModal();
@@ -466,16 +489,18 @@ async function startQRScannerModal() {
             );
             camBtn.style.display = 'none';
         } catch (err) {
-            console.error(err);
-            camBtn.innerText = "ACTIVATE CAMERA";
-            // alert("Camera error: " + err);
+            console.error("Camera fail:", err);
+            camBtn.innerText = "CAMERA ERROR - TAP TO RETRY";
+            // Detailed feedback for user
+            const msg = err.name === 'NotAllowedError' ? "Permission Denied. Please enable camera in settings." : "Camera blocked or not found.";
+            alert(msg);
         }
     };
 
     camBtn.onclick = startCam;
 
-    // Attempt auto-start with a small delay
-    setTimeout(() => { if (getSyncStep() === 2) startCam(); }, 800);
+    // Auto-start attempt
+    setTimeout(() => { if (getSyncStep() === 2) startCam(); }, 500);
 }
 
 function stopQRScannerModal() {
@@ -509,11 +534,19 @@ function handleScannedData(data) {
 function importQRImage() {
     const input = document.createElement('input');
     input.type = 'file'; input.accept = 'image/*';
-    input.onchange = (e) => {
+    input.onchange = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
+
         const scanner = new Html5Qrcode("qr-reader-hidden");
-        scanner.scanFile(file, true).then(text => handleScannedData(text)).catch(e => alert("No QR found"));
+
+        // Use scanFileV2 for better reliability on images
+        scanner.scanFileV2(file, true)
+            .then(res => handleScannedData(res.decodedText))
+            .catch(err => {
+                console.error("Scan fail:", err);
+                alert("COULD NOT READ QR:\nMake sure the photo is clear and the QR is fully visible.");
+            });
     };
     input.click();
 }
