@@ -441,6 +441,10 @@ details summary {
 .qr-box-premium canvas {
     max-width: 100%;
     height: auto !important;
+    display: block;
+    margin: 0 auto;
+    border: 8px solid white;
+    /* High contrast for easy scanning */
 }
 
 .modal-actions {
@@ -469,6 +473,15 @@ details summary {
     margin: 20px auto;
     overflow: hidden;
     border: 2px solid var(--rugged-accent);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+#scanner-view-modal video {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: cover;
 }
 
 .modal-footer {

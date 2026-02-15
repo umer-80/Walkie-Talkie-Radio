@@ -129,14 +129,26 @@ async function startGuidedSync() {
 
     createOffer(activeSyncPeerId, outBox, statusText, (sdp) => {
         modalQrBox.innerHTML = '';
-        new QRCode(modalQrBox, { text: sdp, width: 200, height: 200 });
+        try {
+            new QRCode(modalQrBox, {
+                text: sdp,
+                width: 220,
+                height: 220,
+                colorDark: "#000000",
+                colorLight: "#ffffff",
+                correctLevel: QRCode.CorrectLevel.L
+            });
+        } catch (e) {
+            console.error("QR Render Fail:", e);
+            modalQrBox.innerHTML = '<div style="color:red; font-size:0.6rem">Key too large for QR. Try again.</div>';
+        }
         modalShareBtn.disabled = false;
 
         // Auto-switch to scan if user stays on this step
         setTimeout(() => { if (getSyncStep() === 1) setSyncStep(2); }, 15000);
     });
 
-    startQRScannerModal();
+    setTimeout(startQRScannerModal, 800);
 }
 
 function setSyncStep(step) {
@@ -156,17 +168,36 @@ function closeSyncModal() {
 }
 
 async function shareModalQR() {
-    const qrImg = modalQrBox.querySelector('img');
+    const qrImg = modalQrBox.querySelector('img') || modalQrBox.querySelector('canvas');
     if (!qrImg) return;
+
     try {
-        const blob = await (await fetch(qrImg.src)).blob();
+        let blob;
+        if (qrImg.tagName === 'CANVAS') {
+            blob = await new Promise(resolve => qrImg.toBlob(resolve, 'image/png'));
+        } else {
+            blob = await (await fetch(qrImg.src)).blob();
+        }
+
         const file = new File([blob], 'radio-invite.png', { type: 'image/png' });
+
         if (navigator.share) {
             await navigator.share({ files: [file], title: 'Radio Invite', text: 'Scan to connect!' });
         } else {
-            alert('Share not supported on this browser.');
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'radio-invite.png';
+            a.click();
+            alert("Share not supported. Image saved.");
         }
-    } catch (e) { console.error(e); }
+    } catch (e) {
+        console.error(e);
+        const card = document.querySelector(`[data-peer-id="${activeSyncPeerId}"]`);
+        const val = card.querySelector('.out-box').value;
+        navigator.clipboard.writeText(val);
+        alert("Copying key to clipboard...");
+    }
 }
 
 // Peer Management
@@ -202,9 +233,9 @@ async function createOffer(peerId, outBox, statusText, onReady) {
     let sdpSent = false;
     const sendSDP = () => {
         if (sdpSent) return;
-        const sdp = btoa(JSON.stringify(pc.localDescription));
-        outBox.value = sdp;
-        if (onReady) onReady(sdp);
+        const compressed = compressSDP(JSON.stringify(pc.localDescription));
+        outBox.value = compressed;
+        if (onReady) onReady(compressed);
         sdpSent = true;
     };
 
@@ -212,7 +243,24 @@ async function createOffer(peerId, outBox, statusText, onReady) {
     pc.onicecandidate = (e) => {
         if (!e.candidate || e.candidate.candidate.includes('srflx')) sendSDP();
     };
-    setTimeout(sendSDP, 5000); // Max wait 5s
+    setTimeout(sendSDP, 6000); // Wait up to 6s for global candidates
+}
+
+function compressSDP(sdpJson) {
+    const sdp = JSON.parse(sdpJson);
+    let raw = sdp.sdp;
+
+    // THINNING: Remove unnecessary candidates to shrink QR size
+    const lines = raw.split('\r\n');
+    const thinnedLines = lines.filter(line => {
+        if (line.startsWith('a=candidate:')) {
+            return line.includes('srflx') || line.includes('typ host');
+        }
+        return true;
+    });
+
+    sdp.sdp = thinnedLines.join('\r\n');
+    return btoa(JSON.stringify(sdp));
 }
 
 async function handlePeerAction(peerId, payload, outBox, statusText, onAnswerReady) {
@@ -230,19 +278,22 @@ async function handlePeerAction(peerId, payload, outBox, statusText, onAnswerRea
             let sdpSent = false;
             const sendAnswer = () => {
                 if (sdpSent) return;
-                const aSdp = btoa(JSON.stringify(pc.localDescription));
-                outBox.value = aSdp;
-                if (onAnswerReady) onAnswerReady(aSdp);
+                const compressed = compressSDP(JSON.stringify(pc.localDescription));
+                outBox.value = compressed;
+                if (onAnswerReady) onAnswerReady(compressed);
                 sdpSent = true;
             };
 
             pc.onicegatheringstatechange = () => { if (pc.iceGatheringState === 'complete') sendAnswer(); };
             pc.onicecandidate = (e) => { if (!e.candidate || e.candidate.candidate.includes('srflx')) sendAnswer(); };
-            setTimeout(sendAnswer, 5000);
+            setTimeout(sendAnswer, 6000);
         } else {
             if (peers[peerId]) await peers[peerId].setRemoteDescription(new RTCSessionDescription(sdp));
         }
-    } catch (e) { console.error(e); }
+    } catch (e) {
+        console.error('Handshake Error:', e);
+        alert("INVALID KEY: Make sure you scanned the correct QR code.");
+    }
 }
 
 function setupPeerListeners(peerId, statusText) {
@@ -384,10 +435,14 @@ function handleScannedData(data) {
     const statusText = card.querySelector('.peer-status');
 
     handlePeerAction(activeSyncPeerId, data, outBox, statusText, (answerSdp) => {
-        // If we just generated an answer, we must show it to the other person!
         modalQrBox.innerHTML = '';
-        new QRCode(modalQrBox, { text: answerSdp, width: 200, height: 200 });
-        setSyncStep(1); // Go back to show them the answer
+        new QRCode(modalQrBox, {
+            text: answerSdp,
+            width: 220,
+            height: 220,
+            correctLevel: QRCode.CorrectLevel.L
+        });
+        setSyncStep(1);
         modalShareBtn.disabled = false;
     });
 }
