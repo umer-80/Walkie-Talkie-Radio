@@ -424,37 +424,50 @@ let html5QrCodeModal = null;
 async function startQRScannerModal() {
     if (getSyncStep() !== 2) return;
 
-    // Cleanup if already exists
+    if (!window.isSecureContext && location.hostname !== "localhost") {
+        alert("Camera requires HTTPS. Please use a secure connection or the APK.");
+    }
+
+    // Cleanup existing instance
     if (html5QrCodeModal) {
         try { await html5QrCodeModal.stop(); } catch (e) { }
         html5QrCodeModal = null;
     }
 
+    const scannerContainer = document.getElementById('scanner-view-modal');
+    // Ensure button is there
+    if (!document.getElementById('start-cam-btn')) {
+        scannerContainer.innerHTML = '<button id="start-cam-btn" class="btn-primary" style="font-size: 0.7rem; padding: 10px 20px;">ACTIVATE CAMERA</button>';
+    }
+
     const camBtn = document.getElementById('start-cam-btn');
-    if (camBtn) camBtn.style.display = 'block';
+    camBtn.style.display = 'block';
 
     html5QrCodeModal = new Html5Qrcode("scanner-view-modal");
 
-    const startCam = () => {
-        html5QrCodeModal.start(
-            { facingMode: "environment" },
-            { fps: 15, qrbox: { width: 250, height: 250 } },
-            (text) => {
-                handleScannedData(text);
-                if (html5QrCodeModal) html5QrCodeModal.stop();
-            }
-        ).then(() => {
-            if (camBtn) camBtn.style.display = 'none';
-        }).catch(err => {
+    const startCam = async () => {
+        try {
+            camBtn.innerText = "STARTING...";
+            await html5QrCodeModal.start(
+                { facingMode: "environment" },
+                { fps: 20, qrbox: { width: 250, height: 250 } },
+                (text) => {
+                    handleScannedData(text);
+                    stopQRScannerModal();
+                }
+            );
+            camBtn.style.display = 'none';
+        } catch (err) {
             console.error(err);
-            if (camBtn) camBtn.innerText = "CAMERA FAILED - TRY AGAIN";
-        });
+            camBtn.innerText = "ACTIVATE CAMERA";
+            alert("Camera Error: Please ensure you granted permissions.");
+        }
     };
 
-    if (camBtn) camBtn.onclick = startCam;
+    camBtn.onclick = startCam;
 
-    // Auto-attempt once
-    startCam();
+    // Auto-attempt for convenience
+    setTimeout(startCam, 500);
 }
 
 function stopQRScannerModal() {
