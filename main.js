@@ -25,9 +25,7 @@ const openSyncBtn = document.getElementById('open-sync-btn');
 const closeSyncBtn = document.getElementById('close-modal-btn');
 const modalQrBox = document.getElementById('modal-qr');
 const modalShareBtn = document.getElementById('modal-share-btn');
-const modalCopyBtn = document.getElementById('modal-copy-btn');
 const modalImportBtn = document.getElementById('modal-import-btn');
-const modalManualBtn = document.getElementById('modal-manual-btn');
 const finishSyncBtn = document.getElementById('finish-sync-btn');
 const syncSteps = document.querySelectorAll('.sync-step');
 const syncDots = document.querySelectorAll('.dot');
@@ -97,12 +95,9 @@ function playRogerBeep() {
 
 function setupEventListeners() {
     openSyncBtn.onclick = () => startGuidedSync();
-    closeSyncBtn.onclick = closeSyncModal;
     finishSyncBtn.onclick = closeSyncModal;
     modalShareBtn.onclick = shareModalQR;
-    modalCopyBtn.onclick = copyModalKey;
     modalImportBtn.onclick = () => importQRImage();
-    modalManualBtn.onclick = promptManualKey;
 
     // New Step Navigation Buttons
     document.getElementById('go-to-step2-btn').onclick = () => setSyncStep(2);
@@ -134,27 +129,25 @@ async function startGuidedSync() {
     createOffer(activeSyncPeerId, outBox, statusText, (sdp) => {
         modalQrBox.innerHTML = '';
         try {
-            // Robust QR Generation: Use auto versioning and lower correction to handle long strings
+            // RENDER CLEAN QR: Using thinned SDP for maximum compatibility
             new QRCode(modalQrBox, {
                 text: sdp,
-                width: 220,
-                height: 220,
+                width: 240,
+                height: 240,
                 colorDark: "#000000",
                 colorLight: "#ffffff",
-                correctLevel: QRCode.CorrectLevel.L // Low correction = more data space
+                correctLevel: QRCode.CorrectLevel.L
             });
         } catch (e) {
-            console.error("QR Render Fail:", e);
-            modalQrBox.innerHTML = '<div style="color:red; font-size:0.6rem">Key too large for QR. Try again.</div>';
+            console.error("QR Fail:", e);
         }
         modalShareBtn.disabled = false;
-
-        // Auto-switch to scan if user stays on this step
-        setTimeout(() => { if (getSyncStep() === 1) setSyncStep(2); }, 15000);
     });
 
-    // DELAY START: Ensure modal glass is fully rendered before camera tries to init sizing
-    setTimeout(startQRScannerModal, 800);
+    // FIX BLACK SCREEN: 1 second delay to ensure modal is absolutely ready before camera init
+    setTimeout(() => {
+        if (getSyncStep() === 2) startQRScannerModal();
+    }, 1000);
 }
 
 function setSyncStep(step) {
@@ -187,30 +180,20 @@ async function shareModalQR() {
 
         const file = new File([blob], 'radio-invite.png', { type: 'image/png' });
 
-        if (navigator.canShare && navigator.canShare({ files: [file] })) {
-            await navigator.share({ files: [file], title: 'Radio Invite', text: 'Scan to connect!' });
+        if (navigator.share) {
+            await navigator.share({ files: [file], title: 'Radio Invite', text: 'Scan this QR to connect to my radio!' });
         } else {
-            // Fallback: Download
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
             a.download = 'radio-invite.png';
             a.click();
-            alert("Share not supported. Image saved to gallery/downloads.");
+            alert("Share not supported on this device. Image saved to gallery.");
         }
     } catch (e) {
         console.error(e);
-        copyModalKey();
+        alert("Could not share image. Please take a screenshot of the QR code.");
     }
-}
-
-function copyModalKey() {
-    const card = document.querySelector(`[data-peer-id="${activeSyncPeerId}"]`);
-    if (!card) return;
-    const val = card.querySelector('.out-box').value;
-    navigator.clipboard.writeText(val).then(() => {
-        alert("Key copied as text! You can now paste it into WhatsApp/Messenger.");
-    });
 }
 
 // Peer Management
@@ -246,7 +229,7 @@ async function createOffer(peerId, outBox, statusText, onReady) {
     let sdpSent = false;
     const sendSDP = () => {
         if (sdpSent) return;
-        const compressed = compressSDP(JSON.stringify(pc.localDescription));
+        const compressed = thinSDP(JSON.stringify(pc.localDescription));
         outBox.value = compressed;
         if (onReady) onReady(compressed);
         sdpSent = true;
@@ -259,21 +242,38 @@ async function createOffer(peerId, outBox, statusText, onReady) {
     setTimeout(sendSDP, 6000); // Wait up to 6s for global candidates
 }
 
-function compressSDP(sdpJson) {
+function thinSDP(sdpJson) {
     const sdp = JSON.parse(sdpJson);
     let raw = sdp.sdp;
 
-    // THINNING: Remove unnecessary candidates to shrink QR size
-    // Keep only 'srflx' (global) and 'typ host' (local) for the first few lines
+    // EXTREME THINNING: Strip almost everything except essential fingerprint and ONE candidate
     const lines = raw.split('\r\n');
-    const thinnedLines = lines.filter(line => {
-        if (line.startsWith('a=candidate:')) {
-            return line.includes('srflx') || line.includes('typ host');
-        }
-        return true;
-    });
+    let essentialLines = [];
+    let candidateCount = 0;
 
-    sdp.sdp = thinnedLines.join('\r\n');
+    for (let line of lines) {
+        // Keep essential identity lines
+        if (line.startsWith('v=') || line.startsWith('o=') || line.startsWith('s=') ||
+            line.startsWith('t=') || line.startsWith('m=') || line.startsWith('c=') ||
+            line.startsWith('a=mid:') || line.startsWith('a=fingerprint:') ||
+            line.startsWith('a=setup:') || line.startsWith('a=rtcp-mux') ||
+            line.startsWith('a=msid-semantic:')) {
+            essentialLines.push(line);
+        }
+        // Keep ONLY the first srflx (global) or host candidate
+        else if (line.startsWith('a=candidate:') && candidateCount < 1) {
+            if (line.includes('srflx') || line.includes('host')) {
+                essentialLines.push(line);
+                candidateCount++;
+            }
+        }
+        // Keep ICE ufrag/pwd
+        else if (line.startsWith('a=ice-ufrag:') || line.startsWith('a=ice-pwd:')) {
+            essentialLines.push(line);
+        }
+    }
+
+    sdp.sdp = essentialLines.join('\r\n');
     return btoa(JSON.stringify(sdp));
 }
 
@@ -292,7 +292,7 @@ async function handlePeerAction(peerId, payload, outBox, statusText, onAnswerRea
             let sdpSent = false;
             const sendAnswer = () => {
                 if (sdpSent) return;
-                const compressed = compressSDP(JSON.stringify(pc.localDescription));
+                const compressed = thinSDP(JSON.stringify(pc.localDescription));
                 outBox.value = compressed;
                 if (onAnswerReady) onAnswerReady(compressed);
                 sdpSent = true;
@@ -306,7 +306,6 @@ async function handlePeerAction(peerId, payload, outBox, statusText, onAnswerRea
         }
     } catch (e) {
         console.error('Handshake Error:', e);
-        alert("INVALID KEY: Make sure you scanned the correct QR code.");
     }
 }
 
@@ -449,15 +448,14 @@ function handleScannedData(data) {
     const statusText = card.querySelector('.peer-status');
 
     handlePeerAction(activeSyncPeerId, data, outBox, statusText, (answerSdp) => {
-        // If we just generated an answer, we must show it to the other person!
         modalQrBox.innerHTML = '';
         new QRCode(modalQrBox, {
             text: answerSdp,
-            width: 220,
-            height: 220,
+            width: 240,
+            height: 240,
             correctLevel: QRCode.CorrectLevel.L
         });
-        setSyncStep(1); // Go back to show them the answer
+        setSyncStep(1);
         modalShareBtn.disabled = false;
     });
 }
@@ -472,15 +470,6 @@ function importQRImage() {
         scanner.scanFile(file, true).then(text => handleScannedData(text)).catch(e => alert("No QR found"));
     };
     input.click();
-}
-
-function promptManualKey() {
-    const key = prompt("Paste the Key (long text) received from your friend:");
-    if (key && key.length > 50) {
-        handleScannedData(key);
-    } else if (key) {
-        alert("Invalid key format.");
-    }
 }
 
 init();

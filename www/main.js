@@ -25,9 +25,7 @@ const openSyncBtn = document.getElementById('open-sync-btn');
 const closeSyncBtn = document.getElementById('close-modal-btn');
 const modalQrBox = document.getElementById('modal-qr');
 const modalShareBtn = document.getElementById('modal-share-btn');
-const modalCopyBtn = document.getElementById('modal-copy-btn');
 const modalImportBtn = document.getElementById('modal-import-btn');
-const modalManualBtn = document.getElementById('modal-manual-btn');
 const finishSyncBtn = document.getElementById('finish-sync-btn');
 const syncSteps = document.querySelectorAll('.sync-step');
 const syncDots = document.querySelectorAll('.dot');
@@ -97,12 +95,9 @@ function playRogerBeep() {
 
 function setupEventListeners() {
     openSyncBtn.onclick = () => startGuidedSync();
-    closeSyncBtn.onclick = closeSyncModal;
     finishSyncBtn.onclick = closeSyncModal;
     modalShareBtn.onclick = shareModalQR;
-    modalCopyBtn.onclick = copyModalKey;
     modalImportBtn.onclick = () => importQRImage();
-    modalManualBtn.onclick = promptManualKey;
 
     // New Step Navigation Buttons
     document.getElementById('go-to-step2-btn').onclick = () => setSyncStep(2);
@@ -136,23 +131,21 @@ async function startGuidedSync() {
         try {
             new QRCode(modalQrBox, {
                 text: sdp,
-                width: 220,
-                height: 220,
+                width: 240,
+                height: 240,
                 colorDark: "#000000",
                 colorLight: "#ffffff",
                 correctLevel: QRCode.CorrectLevel.L
             });
         } catch (e) {
-            console.error("QR Render Fail:", e);
-            modalQrBox.innerHTML = '<div style="color:red; font-size:0.6rem">Key too large for QR. Try again.</div>';
+            console.error("QR fail:", e);
         }
         modalShareBtn.disabled = false;
-
-        // Auto-switch to scan if user stays on this step
-        setTimeout(() => { if (getSyncStep() === 1) setSyncStep(2); }, 15000);
     });
 
-    setTimeout(startQRScannerModal, 800);
+    setTimeout(() => {
+        if (getSyncStep() === 2) startQRScannerModal();
+    }, 1000);
 }
 
 function setSyncStep(step) {
@@ -186,18 +179,18 @@ async function shareModalQR() {
         const file = new File([blob], 'radio-invite.png', { type: 'image/png' });
 
         if (navigator.share) {
-            await navigator.share({ files: [file], title: 'Radio Invite', text: 'Scan to connect!' });
+            await navigator.share({ files: [file], title: 'Radio Invite', text: 'Scan this to connect!' });
         } else {
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
             a.download = 'radio-invite.png';
             a.click();
-            alert("Share not supported. Image saved.");
+            alert("Image saved to gallery.");
         }
     } catch (e) {
         console.error(e);
-        copyModalKey();
+        alert("Failed to share. Take a screenshot instead.");
     }
 }
 
@@ -243,7 +236,7 @@ async function createOffer(peerId, outBox, statusText, onReady) {
     let sdpSent = false;
     const sendSDP = () => {
         if (sdpSent) return;
-        const compressed = compressSDP(JSON.stringify(pc.localDescription));
+        const compressed = thinSDP(JSON.stringify(pc.localDescription));
         outBox.value = compressed;
         if (onReady) onReady(compressed);
         sdpSent = true;
@@ -253,23 +246,36 @@ async function createOffer(peerId, outBox, statusText, onReady) {
     pc.onicecandidate = (e) => {
         if (!e.candidate || e.candidate.candidate.includes('srflx')) sendSDP();
     };
-    setTimeout(sendSDP, 6000); // Wait up to 6s for global candidates
+    setTimeout(sendSDP, 6000);
 }
 
-function compressSDP(sdpJson) {
+function thinSDP(sdpJson) {
     const sdp = JSON.parse(sdpJson);
     let raw = sdp.sdp;
-
-    // THINNING: Remove unnecessary candidates to shrink QR size
     const lines = raw.split('\r\n');
-    const thinnedLines = lines.filter(line => {
-        if (line.startsWith('a=candidate:')) {
-            return line.includes('srflx') || line.includes('typ host');
-        }
-        return true;
-    });
+    let essentialLines = [];
+    let candidateCount = 0;
 
-    sdp.sdp = thinnedLines.join('\r\n');
+    for (let line of lines) {
+        if (line.startsWith('v=') || line.startsWith('o=') || line.startsWith('s=') ||
+            line.startsWith('t=') || line.startsWith('m=') || line.startsWith('c=') ||
+            line.startsWith('a=mid:') || line.startsWith('a=fingerprint:') ||
+            line.startsWith('a=setup:') || line.startsWith('a=rtcp-mux') ||
+            line.startsWith('a=msid-semantic:')) {
+            essentialLines.push(line);
+        }
+        else if (line.startsWith('a=candidate:') && candidateCount < 1) {
+            if (line.includes('srflx') || line.includes('host')) {
+                essentialLines.push(line);
+                candidateCount++;
+            }
+        }
+        else if (line.startsWith('a=ice-ufrag:') || line.startsWith('a=ice-pwd:')) {
+            essentialLines.push(line);
+        }
+    }
+
+    sdp.sdp = essentialLines.join('\r\n');
     return btoa(JSON.stringify(sdp));
 }
 
@@ -288,7 +294,7 @@ async function handlePeerAction(peerId, payload, outBox, statusText, onAnswerRea
             let sdpSent = false;
             const sendAnswer = () => {
                 if (sdpSent) return;
-                const compressed = compressSDP(JSON.stringify(pc.localDescription));
+                const compressed = thinSDP(JSON.stringify(pc.localDescription));
                 outBox.value = compressed;
                 if (onAnswerReady) onAnswerReady(compressed);
                 sdpSent = true;
@@ -302,7 +308,6 @@ async function handlePeerAction(peerId, payload, outBox, statusText, onAnswerRea
         }
     } catch (e) {
         console.error('Handshake Error:', e);
-        alert("INVALID KEY: Make sure you scanned the correct QR code.");
     }
 }
 
@@ -448,25 +453,13 @@ function handleScannedData(data) {
         modalQrBox.innerHTML = '';
         new QRCode(modalQrBox, {
             text: answerSdp,
-            width: 220,
-            height: 220,
+            width: 240,
+            height: 240,
             correctLevel: QRCode.CorrectLevel.L
         });
         setSyncStep(1);
         modalShareBtn.disabled = false;
     });
-}
-
-function importQRImage() {
-    const input = document.createElement('input');
-    input.type = 'file'; input.accept = 'image/*';
-    input.onchange = (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        const scanner = new Html5Qrcode("modal-qr"); // Temporary container
-        scanner.scanFile(file, true).then(text => handleScannedData(text)).catch(e => alert("No QR found"));
-    };
-    input.click();
 }
 
 function importQRImage() {
