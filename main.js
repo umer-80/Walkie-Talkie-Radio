@@ -104,6 +104,30 @@ function setupEventListeners() {
     document.getElementById('go-to-step2-btn').onclick = () => setSyncStep(2);
     document.getElementById('go-to-step1-btn').onclick = () => setSyncStep(1);
 
+    // Diagnostic Handlers
+    const pasteArea = document.getElementById('paste-area');
+    const doPasteBtn = document.getElementById('do-paste-btn');
+    document.getElementById('modal-paste-btn').onclick = () => {
+        pasteArea.style.display = pasteArea.style.display === 'none' ? 'block' : 'none';
+    };
+    doPasteBtn.onclick = () => {
+        const text = document.getElementById('sync-paste-input').value.trim();
+        if (text) {
+            handleScannedData(text);
+            document.getElementById('sync-paste-input').value = "";
+            pasteArea.style.display = 'none';
+        }
+    };
+    const copyArea = document.getElementById('copyable-sync-string');
+    copyArea.onclick = () => {
+        const text = copyArea.getAttribute('data-sync');
+        if (text) {
+            copyArea.innerText = text;
+            copyArea.style.color = "#00ff00";
+            navigator.clipboard.writeText(text).catch(() => { });
+        }
+    };
+
     localModeToggle.addEventListener('change', (e) => {
         currentPCConfig = e.target.checked ? localConfig : webConfig;
         updateGlobalStatus();
@@ -139,6 +163,13 @@ async function startGuidedSync() {
                 colorLight: "#ffffff",
                 correctLevel: QRCode.CorrectLevel.L
             });
+            // Update Diagnostic String
+            const copyArea = document.getElementById('copyable-sync-string');
+            if (copyArea) {
+                copyArea.setAttribute('data-sync', sdp);
+                copyArea.innerText = "Click to Reveal Sync String";
+                copyArea.style.color = "#555";
+            }
         } catch (e) {
             console.error("QR Fail:", e);
             modalQrBox.innerHTML = '<div style="color:#ff4444; font-size:0.6rem;">QR Generation Failed. Try again.</div>';
@@ -155,6 +186,7 @@ async function startGuidedSync() {
 function setSyncStep(step) {
     syncSteps.forEach((s, i) => s.classList.toggle('active', i === step - 1));
     syncDots.forEach((d, i) => d.classList.toggle('active', i === step - 1));
+    if (step === 2) startQRScannerModal();
 }
 
 function getSyncStep() {
@@ -184,7 +216,7 @@ async function shareModalQR() {
 
         const file = new File([blob], 'radio-invite.png', { type: 'image/png' });
 
-        // NATIVE SHARE (Best for APK)
+        // TRY NATIVE SHARE FIRST
         if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
             await navigator.share({
                 files: [file],
@@ -192,10 +224,9 @@ async function shareModalQR() {
                 text: 'Scan this code to connect to my radio!'
             });
         } else {
-            // FALLBACK: Download (May fail in some APK WebViews)
+            // WEB DOWNLOAD FALLBACK
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
-            a.style.display = 'none';
             a.href = url;
             a.download = 'radio-invite.png';
             document.body.appendChild(a);
@@ -203,13 +234,13 @@ async function shareModalQR() {
             setTimeout(() => {
                 document.body.removeChild(a);
                 URL.revokeObjectURL(url);
-            }, 500);
+            }, 1000);
 
-            alert("SHARE NOTICE:\nIf the image didn't save, please take a SCREENSHOT of the QR code and send it to your friend!");
+            alert("QR DOWNLOADED!\nIf it didn't save, please take a SCREENSHOT of the QR code.");
         }
     } catch (e) {
         console.error("Share Fail:", e);
-        alert("Please take a SCREENSHOT of this QR code to share it.");
+        alert("Please take a SCREENSHOT of the QR code to share.");
     }
 }
 
@@ -246,62 +277,36 @@ async function createOffer(peerId, outBox, statusText, onReady) {
     let sdpSent = false;
     const sendSDP = () => {
         if (sdpSent) return;
-        const compressed = thinSDP(JSON.stringify(pc.localDescription));
-        outBox.value = compressed;
-        if (onReady) onReady(compressed);
+        const full = btoa(JSON.stringify(pc.localDescription));
+        outBox.value = full;
+        if (onReady) onReady(full);
         sdpSent = true;
     };
 
     pc.onicegatheringstatechange = () => { if (pc.iceGatheringState === 'complete') sendSDP(); };
-    pc.onicecandidate = (e) => {
-        if (!e.candidate || e.candidate.candidate.includes('srflx')) sendSDP();
-    };
-    setTimeout(sendSDP, 6000); // Wait up to 6s for global candidates
+    pc.onicecandidate = (e) => { if (!e.candidate) sendSDP(); };
+    setTimeout(sendSDP, 8000);
 }
 
+// NO THINNING: Send the full, exact SDP the browser generated
 function thinSDP(sdpJson) {
-    const sdp = JSON.parse(sdpJson);
-    let raw = sdp.sdp;
-
-    // EXTREME THINNING: Strip almost everything except essential fingerprint and ONE candidate
-    const lines = raw.split('\r\n');
-    let essentialLines = [];
-    let candidateCount = 0;
-
-    for (let line of lines) {
-        // Keep essential identity lines
-        if (line.startsWith('v=') || line.startsWith('o=') || line.startsWith('s=') ||
-            line.startsWith('t=') || line.startsWith('m=') || line.startsWith('c=') ||
-            line.startsWith('a=mid:') || line.startsWith('a=fingerprint:') ||
-            line.startsWith('a=setup:') || line.startsWith('a=rtcp-mux') ||
-            line.startsWith('a=msid-semantic:')) {
-            essentialLines.push(line);
-        }
-        // Keep ONLY the first srflx (global) or host candidate
-        else if (line.startsWith('a=candidate:') && candidateCount < 1) {
-            if (line.includes('srflx') || line.includes('host')) {
-                essentialLines.push(line);
-                candidateCount++;
-            }
-        }
-        // Keep ICE ufrag/pwd
-        else if (line.startsWith('a=ice-ufrag:') || line.startsWith('a=ice-pwd:')) {
-            essentialLines.push(line);
-        }
-    }
-
-    sdp.sdp = essentialLines.join('\r\n');
-    return btoa(JSON.stringify(sdp));
+    return btoa(sdpJson);
 }
 
 async function handlePeerAction(peerId, payload, outBox, statusText, onAnswerReady) {
     try {
-        const sdp = JSON.parse(atob(payload));
+        if (!payload || payload.length < 10) return;
+        const sdp = JSON.parse(atob(payload.trim()));
+
         if (sdp.type === 'offer') {
             const pc = new RTCPeerConnection(currentPCConfig);
             peers[peerId] = pc;
             setupPeerListeners(peerId, statusText);
-            localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+
+            if (localStream) {
+                localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+            }
+
             await pc.setRemoteDescription(new RTCSessionDescription(sdp));
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
@@ -314,15 +319,15 @@ async function handlePeerAction(peerId, payload, outBox, statusText, onAnswerRea
                 if (onAnswerReady) onAnswerReady(compressed);
                 sdpSent = true;
             };
-
             pc.onicegatheringstatechange = () => { if (pc.iceGatheringState === 'complete') sendAnswer(); };
-            pc.onicecandidate = (e) => { if (!e.candidate || e.candidate.candidate.includes('srflx')) sendAnswer(); };
+            pc.onicecandidate = (e) => { if (!e.candidate) sendAnswer(); };
             setTimeout(sendAnswer, 6000);
         } else {
             if (peers[peerId]) await peers[peerId].setRemoteDescription(new RTCSessionDescription(sdp));
         }
     } catch (e) {
         console.error('Handshake Error:', e);
+        alert(`SYNC FAILED: ${e.message}\nMake sure both devices have refreshed.`);
     }
 }
 
@@ -443,64 +448,60 @@ let html5QrCodeModal = null;
 async function startQRScannerModal() {
     if (getSyncStep() !== 2) return;
 
-    // Cleanup existing instance
+    // HARD KILL OLD INSTANCES
     if (html5QrCodeModal) {
         try { await html5QrCodeModal.stop(); } catch (e) { }
+        try { html5QrCodeModal.clear(); } catch (e) { }
         html5QrCodeModal = null;
     }
 
     const scannerContainer = document.getElementById('scanner-view-modal');
     if (!scannerContainer) return;
 
-    // Ensure button is ready
-    let camBtn = document.getElementById('start-cam-btn');
-    if (!camBtn) {
-        scannerContainer.innerHTML = '<button id="start-cam-btn" class="btn-primary" style="font-size: 0.8rem; padding: 12px 24px; position:relative; z-index:100;">ACTIVATE CAMERA</button>';
-        camBtn = document.getElementById('start-cam-btn');
-    }
+    scannerContainer.innerHTML = '<button id="start-cam-btn" class="btn-primary" style="font-size:0.8rem; padding:12px 24px; position:relative; z-index:1000;">ACTIVATE CAMERA</button>';
+    const camBtn = document.getElementById('start-cam-btn');
 
-    camBtn.style.display = 'block';
-    camBtn.innerText = "ACTIVATE CAMERA";
-
-    html5QrCodeModal = new Html5Qrcode("scanner-view-modal");
-
-    const startCam = async (e) => {
-        if (e) { e.preventDefault(); e.stopPropagation(); }
+    camBtn.onclick = async () => {
         try {
-            camBtn.innerText = "PROBING HARDWARE...";
+            camBtn.innerText = "STARTING...";
+            camBtn.disabled = true;
 
-            // Explicit permission probe for APK
-            await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+            // Step 1: Enumerate available cameras
+            const cameras = await Html5Qrcode.getCameras();
+            if (!cameras || cameras.length === 0) {
+                throw new Error("No cameras found on this device.");
+            }
 
-            camBtn.innerText = "STARTING SCANNER...";
+            // Step 2: Pick best camera (prefer back/environment)
+            let cameraId = cameras[0].id;
+            for (const cam of cameras) {
+                const label = (cam.label || '').toLowerCase();
+                if (label.includes('back') || label.includes('environment') || label.includes('rear')) {
+                    cameraId = cam.id;
+                    break;
+                }
+            }
+
+            // Step 3: Start with specific camera ID (no facingMode issues)
+            html5QrCodeModal = new Html5Qrcode("scanner-view-modal");
             await html5QrCodeModal.start(
-                { facingMode: "environment" },
-                {
-                    fps: 20,
-                    qrbox: (width, height) => {
-                        const size = Math.min(width, height) * 0.8;
-                        return { width: size, height: size };
-                    }
-                },
+                cameraId,
+                { fps: 15, qrbox: { width: 250, height: 250 } },
                 (text) => {
                     handleScannedData(text);
                     stopQRScannerModal();
-                }
+                },
+                () => { } // ignore failed scans
             );
             camBtn.style.display = 'none';
+
         } catch (err) {
-            console.error("Camera fail:", err);
-            camBtn.innerText = "CAMERA ERROR - TAP TO RETRY";
-            // Detailed feedback for user
-            const msg = err.name === 'NotAllowedError' ? "Permission Denied. Please enable camera in settings." : "Camera blocked or not found.";
-            alert(msg);
+            console.error("Camera Error:", err);
+            camBtn.innerText = "ACTIVATE CAMERA";
+            camBtn.disabled = false;
+            alert("Camera Error: " + (err.message || err) + "\nTry closing other tabs using the camera, or use IMPORT FROM GALLERY.");
         }
     };
-
-    camBtn.onclick = startCam;
-
-    // Auto-start attempt
-    setTimeout(() => { if (getSyncStep() === 2) startCam(); }, 500);
 }
 
 function stopQRScannerModal() {
@@ -520,6 +521,15 @@ function handleScannedData(data) {
 
     handlePeerAction(activeSyncPeerId, data, outBox, statusText, (answerSdp) => {
         modalQrBox.innerHTML = '';
+
+        // Diagnostic String for Answer
+        const copyArea = document.getElementById('copyable-sync-string');
+        if (copyArea) {
+            copyArea.setAttribute('data-sync', answerSdp);
+            copyArea.innerText = "Click to Reveal NEW Sync String";
+            copyArea.style.color = "#555";
+        }
+
         new QRCode(modalQrBox, {
             text: answerSdp,
             width: 240,
@@ -540,12 +550,12 @@ function importQRImage() {
 
         const scanner = new Html5Qrcode("qr-reader-hidden");
 
-        // Use scanFileV2 for better reliability on images
-        scanner.scanFileV2(file, true)
-            .then(res => handleScannedData(res.decodedText))
+        // Use scanFile for better reliability on images
+        scanner.scanFile(file, true)
+            .then(text => handleScannedData(text))
             .catch(err => {
                 console.error("Scan fail:", err);
-                alert("COULD NOT READ QR:\nMake sure the photo is clear and the QR is fully visible.");
+                alert("COULD NOT READ QR:\nPlease ensure the photo is clear and the QR is fully visible.");
             });
     };
     input.click();

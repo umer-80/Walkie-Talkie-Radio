@@ -364,14 +364,17 @@ details summary {
 }
 
 .modal-content {
-    width: 100%;
+    width: 95%;
     max-width: 420px;
+    box-sizing: border-box;
     border-radius: 32px;
-    padding: 35px;
+    padding: 25px;
     position: relative;
     color: white;
     text-align: center;
     border: 1px solid rgba(var(--rugged-accent-rgba), 0.2);
+    max-height: 90vh;
+    overflow-y: auto;
 }
 
 .modal-header {
