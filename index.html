@@ -7,6 +7,8 @@
     <title>P2P Global Radio - Multi-Peer</title>
     <link rel="stylesheet" href="style.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://unpkg.com/html5-qrcode"></script>
 </head>
 
 <body>
@@ -76,19 +78,35 @@
                 </div>
 
                 <div class="step step-1">
-                    <button class="btn-offer">1. Get Offer</button>
-                    <textarea class="out-box" readonly placeholder="Copy Key..."></textarea>
+                    <button class="btn-offer">1. Get Global Key</button>
+                    <div class="qr-container">
+                        <div class="qr-code"></div>
+                        <button class="btn-share" disabled>Share QR</button>
+                    </div>
+                    <textarea class="out-box" readonly placeholder="Key will appear here..."></textarea>
                 </div>
 
                 <div class="step step-2">
-                    <textarea class="in-box" placeholder="Paste Key..."></textarea>
-                    <button class="btn-action">2. Paste/Answer</button>
+                    <div class="scan-actions">
+                        <button class="btn-scan">Scan QR</button>
+                        <button class="btn-import">Import Image</button>
+                    </div>
+                    <textarea class="in-box" placeholder="Or paste Key here..."></textarea>
+                    <button class="btn-action">2. Connect Peer</button>
                 </div>
 
                 <button class="btn-remove">Remove</button>
             </div>
         </template>
     </main>
+
+    <div id="reconnecting-overlay">
+        <div class="overlay-content">
+            <div class="spinner"></div>
+            <h3>Signal Dropped</h3>
+            <p>Reconnecting to peer...</p>
+        </div>
+    </div>
 
     <script src="main.js"></script>
 </body>

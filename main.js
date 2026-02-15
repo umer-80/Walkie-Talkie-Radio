@@ -16,12 +16,16 @@ let staticNode;
 let gainNode;
 
 const localModeToggle = document.getElementById('local-mode-toggle');
+const reconnectingOverlay = document.getElementById('reconnecting-overlay');
 
 // Peer configurations
 const webConfig = {
     iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
-        { urls: 'stun:stun1.l.google.com:19302' }
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' },
+        { urls: 'stun:stun3.l.google.com:19302' },
+        { urls: 'stun:stun4.l.google.com:19302' }
     ]
 };
 
@@ -43,7 +47,12 @@ async function init() {
     setupEventListeners();
     setupAudioContext();
     await setupLocalStream();
-    addPeerSlot(); // Start with one empty slot
+
+    // Attempt to restore previous sessions
+    const restored = await tryReconnectAll();
+    if (!restored) {
+        addPeerSlot(); // Start with one empty slot if none restored
+    }
 }
 
 async function setupLocalStream() {
@@ -107,16 +116,14 @@ function setupEventListeners() {
         updateGlobalStatus();
     });
 
-    pttButton.addEventListener('mousedown', startTransmission);
-    pttButton.addEventListener('mouseup', stopTransmission);
-    pttButton.addEventListener('mouseleave', stopTransmission);
-    pttButton.addEventListener('touchstart', (e) => { e.preventDefault(); startTransmission(); });
-    pttButton.addEventListener('touchend', stopTransmission);
+    pttButton.onpointerdown = (e) => { e.preventDefault(); startTransmission(); };
+    pttButton.onpointerup = (e) => { e.preventDefault(); stopTransmission(); };
+    pttButton.onpointerleave = (e) => { e.preventDefault(); stopTransmission(); };
 }
 
 // Peer Management
-function addPeerSlot() {
-    const peerId = 'peer-' + Date.now();
+function addPeerSlot(existingPeerId = null) {
+    const peerId = existingPeerId || 'peer-' + Date.now();
     const clone = peerTemplate.content.cloneNode(true);
     const card = clone.querySelector('.peer-card');
     card.dataset.peerId = peerId;
@@ -128,21 +135,59 @@ function addPeerSlot() {
     const inBox = card.querySelector('.in-box');
     const statusText = card.querySelector('.peer-status');
 
-    btnOffer.onclick = () => createOffer(peerId, outBox, statusText);
+    // QR Elements
+    const qrDiv = card.querySelector('.qr-code');
+    const btnShare = card.querySelector('.btn-share');
+    const btnScan = card.querySelector('.btn-scan');
+    const btnImport = card.querySelector('.btn-import');
+
+    let qrcode = null;
+
+    btnOffer.onclick = () => {
+        createOffer(peerId, outBox, statusText, (sdp) => {
+            if (!qrcode) {
+                qrcode = new QRCode(qrDiv, { text: sdp, width: 128, height: 128 });
+            } else {
+                qrcode.clear();
+                qrcode.makeCode(sdp);
+            }
+            btnShare.disabled = false;
+        });
+    };
+
+    btnShare.onclick = async () => {
+        const qrImg = qrDiv.querySelector('img');
+        if (!qrImg) return;
+        try {
+            const blob = await (await fetch(qrImg.src)).blob();
+            const file = new File([blob], 'radio-key.png', { type: 'image/png' });
+            if (navigator.share) {
+                await navigator.share({ files: [file], title: 'P2P Radio Key', text: 'Scan to connect!' });
+            } else {
+                alert('Sharing not supported. Please screenshot.');
+            }
+        } catch (e) { console.error(e); }
+    };
+
+    btnScan.onclick = () => startQRScanner(inBox);
+    btnImport.onclick = () => importQRImage(inBox);
     btnAction.onclick = () => handlePeerAction(peerId, inBox, outBox, statusText);
+
     btnRemove.onclick = () => {
         if (peers[peerId]) {
             peers[peerId].close();
             delete peers[peerId];
         }
+        localStorage.removeItem('radio_session_' + peerId);
         card.remove();
         updateGlobalStatus();
     };
 
     peerList.appendChild(clone);
+    return peerId;
 }
 
-async function createOffer(peerId, outBox, statusText) {
+async function createOffer(peerId, outBox, statusText, onReady) {
     const pc = new RTCPeerConnection(currentPCConfig);
     peers[peerId] = pc;
     setupPeerListeners(peerId, statusText);
@@ -155,10 +200,21 @@ async function createOffer(peerId, outBox, statusText) {
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
 
+    pc.onicegatheringstatechange = () => {
+        if (pc.iceGatheringState === 'complete') {
+            const sdp = btoa(JSON.stringify(pc.localDescription));
+            outBox.value = sdp;
+            statusText.innerText = 'Offer Ready (Global)';
+            if (onReady) onReady(sdp);
+        }
+    };
+
     pc.onicecandidate = (event) => {
-        if (!event.candidate) {
-            outBox.value = btoa(JSON.stringify(pc.localDescription));
+        if (!event.candidate && pc.iceGatheringState !== 'complete') {
+            const sdp = btoa(JSON.stringify(pc.localDescription));
+            outBox.value = sdp;
             statusText.innerText = 'Offer Ready';
+            if (onReady) onReady(sdp);
         }
     };
 }
@@ -185,8 +241,15 @@ async function handlePeerAction(peerId, inBox, outBox, statusText) {
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
 
+            pc.onicegatheringstatechange = () => {
+                if (pc.iceGatheringState === 'complete') {
+                    outBox.value = btoa(JSON.stringify(pc.localDescription));
+                    statusText.innerText = 'Answer Ready (Global)';
+                }
+            };
+
             pc.onicecandidate = (event) => {
-                if (!event.candidate) {
+                if (!event.candidate && pc.iceGatheringState !== 'complete') {
                     outBox.value = btoa(JSON.stringify(pc.localDescription));
                     statusText.innerText = 'Answer Ready';
                 }
@@ -207,6 +270,14 @@ function setupPeerListeners(peerId, statusText) {
 
     pc.oniceconnectionstatechange = () => {
         statusText.innerText = pc.iceConnectionState;
+
+        if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
+            reconnectingOverlay.style.display = 'flex';
+        } else if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+            reconnectingOverlay.style.display = 'none';
+            saveSession(peerId);
+        }
+
         updateGlobalStatus();
     };
 
@@ -255,6 +326,50 @@ function stopTransmission() {
     });
 }
 
+// Session Persistence
+function saveSession(peerId) {
+    const pc = peers[peerId];
+    if (!pc) return;
+    const session = {
+        localDescription: pc.localDescription,
+        remoteDescription: pc.remoteDescription
+    };
+    localStorage.setItem('radio_session_' + peerId, JSON.stringify(session));
+}
+
+async function tryReconnectAll() {
+    let count = 0;
+    for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key.startsWith('radio_session_')) {
+            const peerId = key.replace('radio_session_', '');
+            const data = JSON.parse(localStorage.getItem(key));
+            await restoreSession(peerId, data);
+            count++;
+        }
+    }
+    return count > 0;
+}
+
+async function restoreSession(peerId, data) {
+    addPeerSlot(peerId);
+    const pc = new RTCPeerConnection(currentPCConfig);
+    peers[peerId] = pc;
+    const statusText = document.querySelector(`[data-peer-id="${peerId}"] .peer-status`);
+    setupPeerListeners(peerId, statusText);
+
+    localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+
+    try {
+        await pc.setRemoteDescription(new RTCSessionDescription(data.remoteDescription));
+        await pc.setLocalDescription(new RTCSessionDescription(data.localDescription));
+        // Note: RE-ICE will happen automatically if both side are online
+    } catch (e) {
+        console.error("Failed to restore session for " + peerId, e);
+        localStorage.removeItem('radio_session_' + peerId);
+    }
+}
+
 function updateGlobalStatus() {
     const connectedCount = Object.values(peers).filter(pc =>
         pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed'
@@ -263,14 +378,95 @@ function updateGlobalStatus() {
     if (connectedCount > 0) {
         connectionStatus.innerText = `Network: ${connectedCount} Peer(s) Connected`;
         connectionStatus.style.color = 'var(--display-text)';
-        try { staticNode.start(); } catch (e) { }
+        try { if (staticNode.state !== 'running') staticNode.start(); } catch (e) { }
+        startStatsMonitoring();
     } else {
         connectionStatus.innerText = 'Network: Offline';
         connectionStatus.style.color = '#888';
     }
+}
 
-    // Update Signal Meter
-    meterBar.style.width = Math.min(connectedCount * 25, 100) + '%';
+let statsInterval = null;
+function startStatsMonitoring() {
+    if (statsInterval) return;
+    statsInterval = setInterval(async () => {
+        const connectedPeers = Object.values(peers).filter(pc =>
+            pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed'
+        );
+
+        if (connectedPeers.length === 0) {
+            clearInterval(statsInterval);
+            statsInterval = null;
+            meterBar.style.width = '0%';
+            return;
+        }
+
+        let totalRtt = 0;
+        let count = 0;
+
+        for (const pc of connectedPeers) {
+            const stats = await pc.getStats();
+            stats.forEach(report => {
+                if (report.type === 'candidate-pair' && report.state === 'succeeded' && report.currentRoundTripTime) {
+                    totalRtt += report.currentRoundTripTime;
+                    count++;
+                }
+            });
+        }
+
+        if (count > 0) {
+            const avgRtt = totalRtt / count;
+            // 0ms = 100%, 500ms+ = 10%
+            let strength = 100 - (avgRtt * 200);
+            strength = Math.max(10, Math.min(100, strength));
+            meterBar.style.width = strength + '%';
+        } else {
+            meterBar.style.width = (connectedPeers.length * 25) + '%';
+        }
+    }, 2000);
+}
+
+// QR Helper Functions
+function startQRScanner(inBox) {
+    const readerDiv = document.createElement('div');
+    readerDiv.id = 'qr-reader';
+    document.body.appendChild(readerDiv);
+
+    const html5QrCode = new Html5Qrcode("qr-reader");
+    html5QrCode.start(
+        { facingMode: "environment" },
+        { fps: 10, qrbox: { width: 250, height: 250 } },
+        (decodedText) => {
+            inBox.value = decodedText;
+            html5QrCode.stop();
+            readerDiv.remove();
+        },
+        (errorMessage) => { /* ignore minor errors */ }
+    ).catch(err => {
+        alert("Camera access denied or error: " + err);
+        readerDiv.remove();
+    });
+}
+
+function importQRImage(inBox) {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const html5QrCode = new Html5Qrcode("qr-reader-hidden");
+        html5QrCode.scanFile(file, true)
+            .then(decodedText => {
+                inBox.value = decodedText;
+            })
+            .catch(err => {
+                alert("Could not find a valid QR code in this image.");
+                console.error(err);
+            });
+    };
+    input.click();
 }
 
 init();

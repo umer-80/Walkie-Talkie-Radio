@@ -50,3 +50,37 @@ Real-time Audio,WebRTC API,The gold standard for peer-to-peer audio without need
 Audio Processing,Web Audio API,"Handles the ""Chirp"" sounds, white noise, and gain control."
 Mobile Wrapper,Apache Cordova or Capacitor,Easily turns your web app into an APK while giving access to native hardware.
 Offline Connectivity,Android Wi-Fi Direct (P2P),Allows phones to talk without any internet or Wi-Fi router.
+
+
+# Updated requirements below
+Role: Senior Full-Stack Engineer specializing in WebRTC.
+
+Objective: Upgrade the current P2P Radio (WebRTC) app to support global connections across different networks and implement a professional QR-code-based signaling system with session persistence.
+
+Requirement 1: Global Connectivity (ICE/STUN)
+
+Update the RTCPeerConnection configuration to use Google s public STUN servers (stun:stun.l.google.com:19302).
+
+Implement an onicecandidate listener that waits for the iceGatheringState to reach 'complete' before generating the final SDP "Digital Key" for the QR code. This ensures the key contains the global public IP, not just the local Wi-Fi IP.
+
+Requirement 2: QR Code Signaling & Image Import
+
+Replace manual text pasting with a QR code system using the html5-qrcode or davidshimjs-qrcodejs library.
+
+Add a "Share Key" button that generates a QR code image and opens the native share menu.
+
+Add an "Import Key from Gallery" feature that allows a user to upload a screenshot of a QR code, decodes it, and automatically initiates the setRemoteDescription handshake.
+
+Requirement 3: Connection Persistence & Room Logic
+
+Implement a "Session Recovery" system using localStorage. Save the successful SDP handshake data so that if the app is refreshed or closed, it attempts to restartIce() and reconnect to the previous peer automatically.
+
+The connection must remain active until the user explicitly clicks a "Disconnect" or "Leave Room" button.
+
+Add an iceconnectionstatechange listener to detect drops and show a "Reconnecting..." status overlay on the UI.
+
+Requirement 4: UI/UX Refinement
+
+Ensure the PTT (Push-to-Talk) logic is robust: only enable the microphone track during onpointerdown and disable it on onpointerup.
+
+Add a visual "Signal Strength" meter based on the WebRTC getStats() API to show connection quality.
