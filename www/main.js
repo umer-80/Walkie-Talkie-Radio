@@ -143,9 +143,7 @@ async function startGuidedSync() {
         modalShareBtn.disabled = false;
     });
 
-    setTimeout(() => {
-        if (getSyncStep() === 2) startQRScannerModal();
-    }, 1000);
+    setTimeout(startQRScannerModal, 1200);
 }
 
 function setSyncStep(step) {
@@ -425,13 +423,37 @@ function startStatsMonitoring() {
 
 // QR MODAL HELPERS
 let html5QrCodeModal = null;
-function startQRScannerModal() {
-    setSyncStep(getSyncStep()); // Ensure view correct
-    if (html5QrCodeModal) return;
+async function startQRScannerModal() {
+    if (getSyncStep() !== 2) return;
+
+    if (html5QrCodeModal) {
+        try { await html5QrCodeModal.stop(); } catch (e) { }
+        html5QrCodeModal = null;
+    }
+
+    const camBtn = document.getElementById('start-cam-btn');
+    if (camBtn) camBtn.style.display = 'block';
+
     html5QrCodeModal = new Html5Qrcode("scanner-view-modal");
-    html5QrCodeModal.start({ facingMode: "environment" }, { fps: 10, qrbox: 250 },
-        (decodedText) => handleScannedData(decodedText)
-    ).catch(e => console.error(e));
+
+    const startCam = () => {
+        html5QrCodeModal.start(
+            { facingMode: "environment" },
+            { fps: 15, qrbox: { width: 250, height: 250 } },
+            (text) => {
+                handleScannedData(text);
+                if (html5QrCodeModal) html5QrCodeModal.stop();
+            }
+        ).then(() => {
+            if (camBtn) camBtn.style.display = 'none';
+        }).catch(err => {
+            console.error(err);
+            if (camBtn) camBtn.innerText = "CAMERA FAILED - TRY AGAIN";
+        });
+    };
+
+    if (camBtn) camBtn.onclick = startCam;
+    startCam();
 }
 
 function stopQRScannerModal() {

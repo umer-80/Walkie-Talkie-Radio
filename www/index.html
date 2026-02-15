@@ -117,11 +117,14 @@
                     </div>
                 </div>
 
-                <div class="sync-step" id="step-2">
-                    <div class="step-label">STEP 2: SCAN</div>
+                <div class="sync-step" data-step="2">
+                    <p class="step-label">STEP 2: SCAN</p>
                     <h3>SCAN PARTNER</h3>
                     <p>Point camera at their screen.</p>
-                    <div id="scanner-view-modal"></div>
+                    <div id="scanner-view-modal">
+                        <button id="start-cam-btn" class="btn-primary"
+                            style="font-size: 0.7rem; padding: 10px 20px;">ACTIVATE CAMERA</button>
+                    </div>
                     <div class="modal-actions">
                         <button id="go-to-step1-btn" class="btn-modal">← My QR Code</button>
                         <button id="modal-import-btn" class="btn-modal">IMPORT FROM GALLERY</button>
