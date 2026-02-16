@@ -66,8 +66,12 @@ async function setupLocalStream() {
     }
 }
 
+let masterGain;
 function setupAudioContext() {
     audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    masterGain = audioContext.createGain();
+    masterGain.connect(audioContext.destination);
+
     const bufferSize = 2 * audioContext.sampleRate;
     const noiseBuffer = audioContext.createBuffer(1, bufferSize, audioContext.sampleRate);
     const output = noiseBuffer.getChannelData(0);
@@ -77,9 +81,16 @@ function setupAudioContext() {
     staticNode.buffer = noiseBuffer;
     staticNode.loop = true;
     gainNode = audioContext.createGain();
-    gainNode.gain.value = 0.01;
+    gainNode.gain.value = 0.008; // Base static volume
     staticNode.connect(gainNode);
-    gainNode.connect(audioContext.destination);
+    gainNode.connect(masterGain);
+    staticNode.start();
+}
+
+function setStaticDucking(duck) {
+    if (!gainNode || !audioContext) return;
+    const target = duck ? 0.001 : 0.008; // Duck volume when voice present
+    gainNode.gain.setTargetAtTime(target, audioContext.currentTime, 0.1);
 }
 
 function playRogerBeep() {
@@ -133,7 +144,11 @@ function setupEventListeners() {
         updateGlobalStatus();
     });
 
-    pttButton.onpointerdown = (e) => { e.preventDefault(); startTransmission(); };
+    pttButton.onpointerdown = async (e) => {
+        e.preventDefault();
+        if (audioContext && audioContext.state === 'suspended') await audioContext.resume();
+        startTransmission();
+    };
     pttButton.onpointerup = (e) => { e.preventDefault(); stopTransmission(); };
     pttButton.onpointerleave = (e) => { e.preventDefault(); stopTransmission(); };
 }
@@ -214,7 +229,11 @@ async function shareModalQR() {
         const file = new File([blob], 'radio-invite.png', { type: 'image/png' });
 
         if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
-            await navigator.share({ files: [file], title: 'Radio Sync Invite', text: 'Scan this code to connect to my radio!' });
+            await navigator.share({
+                files: [file],
+                title: 'Radio Sync Invite',
+                text: 'Scan this code to connect to my radio!'
+            });
         } else {
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -226,7 +245,14 @@ async function shareModalQR() {
                 document.body.removeChild(a);
                 URL.revokeObjectURL(url);
             }, 1000);
-            alert("QR DOWNLOADED!\nIf it didn't save, please take a SCREENSHOT.");
+
+            // Helpful mobile toast instead of alert
+            const toast = document.createElement('div');
+            toast.className = 'connection-alert';
+            toast.style.display = 'block';
+            toast.innerText = "QR DOWNLOADED! If it didn't save, please TAKE A SCREENSHOT.";
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 4000);
         }
     } catch (e) {
         console.error(e);
@@ -341,13 +367,22 @@ function setupPeerListeners(peerId, statusText) {
     };
 
     pc.ontrack = (event) => {
-        const audio = new Audio();
-        audio.srcObject = event.streams[0];
-        audio.play();
-        event.track.onunmute = () => rxLed.classList.add('active-rx');
+        const remoteStream = event.streams[0];
+        const source = audioContext.createMediaStreamSource(remoteStream);
+        const pGain = audioContext.createGain();
+        source.connect(pGain);
+        pGain.connect(masterGain);
+
+        event.track.onunmute = () => {
+            rxLed.classList.add('active-rx');
+            setStaticDucking(true);
+        };
         event.track.onmute = () => {
             const active = Object.values(peers).some(p => p.getReceivers().some(r => r.track && !r.track.muted));
-            if (!active) rxLed.classList.remove('active-rx');
+            if (!active) {
+                rxLed.classList.remove('active-rx');
+                setStaticDucking(false);
+            }
         };
     };
 }
@@ -355,8 +390,9 @@ function setupPeerListeners(peerId, statusText) {
 // PTT Logic
 function startTransmission() {
     if (Object.keys(peers).length === 0) return;
-    if (audioContext.state === 'suspended') audioContext.resume();
+    if (audioContext && audioContext.state === 'suspended') audioContext.resume();
     txLed.classList.add('active-tx');
+    setStaticDucking(true);
     Object.values(peers).forEach(pc => {
         if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
             pc.getSenders().forEach(s => { if (s.track) s.track.enabled = true; });
@@ -367,6 +403,7 @@ function startTransmission() {
 function stopTransmission() {
     if (!txLed.classList.contains('active-tx')) return;
     txLed.classList.remove('active-tx');
+    setStaticDucking(false);
     playRogerBeep();
     Object.values(peers).forEach(pc => pc.getSenders().forEach(s => { if (s.track) s.track.enabled = false; }));
 }
@@ -474,15 +511,24 @@ async function startQRScannerModal() {
                 }
             }
 
+            // Step 3: Start with specific camera ID (no facingMode issues)
             html5QrCodeModal = new Html5Qrcode("scanner-view-modal");
             await html5QrCodeModal.start(
                 cameraId,
-                { fps: 15, qrbox: { width: 250, height: 250 } },
+                {
+                    fps: 20,
+                    qrbox: (w, h) => {
+                        const min = Math.min(w, h);
+                        return { width: min * 0.7, height: min * 0.7 };
+                    },
+                    aspectRatio: 1.0,
+                    showTorchButtonIfSupported: true
+                },
                 (text) => {
                     handleScannedData(text);
                     stopQRScannerModal();
                 },
-                () => { }
+                () => { } // ignore failed scans
             );
             camBtn.style.display = 'none';
 
