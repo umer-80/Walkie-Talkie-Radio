@@ -15,42 +15,45 @@ jobs:
       - name: 📥 Checkout Source
         uses: actions/checkout@v4
 
+      - name: ☕ Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
       - name: 📦 Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
 
       - name: 🔧 Install Dependencies
-        run: npm ci
+        run: npm install
 
-      - name: ☕ Setup Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'zulu'
-          java-version: '17'
-          cache: 'gradle'
-
-      - name: 🌐 Sync Web Assets to www/
+      - name: 🌐 Prepare Capacitor Web Assets
         run: |
           mkdir -p www
           cp index.html www/index.html
           cp main.js www/main.js
           cp style.css www/style.css
-          echo "✅ Web assets synced to www/"
+          echo "✅ Web assets synced"
 
       - name: 🔄 Capacitor Sync
         run: npx cap sync android
 
+      - name: 🔐 Make Gradlew Executable
+        run: chmod +x android/gradlew
+
       - name: 🏗️ Build Debug APK
         run: |
           cd android
-          chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
+          ./gradlew assembleDebug --stacktrace --no-daemon
+        env:
+          JAVA_HOME: ${{ env.JAVA_HOME }}
 
       - name: 📤 Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: P2P-Radio-Debug-APK
+          name: P2P-Radio-APK
           path: android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 30
 
