@@ -3,178 +3,95 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>P2P Global Radio - Multi-Peer</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>P2P Radio</title>
     <link rel="stylesheet" href="style.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
-    <script src="lib/qrcode.min.js"></script>
-    <script src="lib/html5-qrcode.min.js"></script>
-</head>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&family=JetBrains+Mono:wght@400;700&display=swap"
+        rel="stylesheet">
+</head>   
 
-<body>
-    <div id="qr-reader-hidden"
-        style="position:absolute; width:800px; height:800px; opacity:0; pointer-events:none; z-index:-1;"></div>
+<body>    
+    <!-- ====== STATUS BAR ====== -->
     <header>
-        <h1>P2P Global Radio</h1>
-        <p id="connection-status">Network: Offline</p>
+        <div class="status-bar">
+            <span class="app-name">P2P RADIO</span>
+            <span id="connection-status" class="status-badge offline">OFFLINE</span>
+        </div>
     </header>
 
     <main>
-        <section class="radio-section">
+        <!-- ====== RADIO UNIT ====== -->
+        <section class="radio-unit">
             <div class="radio-chassis">
-                <div class="radio-antenna"></div>
+                <div class="antenna"></div>
                 <div class="radio-body">
-                    <div class="speaker-grill"></div>
+                    <div class="speaker-grill">
+                        <div class="grill-line"></div>
+                        <div class="grill-line"></div>
+                        <div class="grill-line"></div>
+                        <div class="grill-line"></div>
+                        <div class="grill-line"></div>
+                    </div>
 
-                    <div class="ui-panel">
-                        <div class="display-container">
+                    <!-- Display Screen -->
+                    <div class="display-screen">
+                        <div class="display-top-row">
                             <div class="signal-meter">
                                 <div class="meter-bar" id="meter-bar"></div>
-                                <span class="meter-label">MESH</span>
                             </div>
-                            <div class="main-display">
-                                <span id="frequency">CH-01</span>
-                                <div class="led-indicators">
-                                    <div class="led" id="tx-led">TX</div>
-                                    <div class="led" id="rx-led">RX</div>
-                                </div>
-                            </div>
-                            <div class="mode-toggle">
-                                <label class="switch">
-                                    <input type="checkbox" id="local-mode-toggle">
-                                    <span class="slider"></span>
-                                </label>
-                                <span class="mode-label">LOCAL P2P (OFFLINE)</span>
+                            <div class="led-cluster">
+                                <div class="led" id="tx-led">TX</div>
+                                <div class="led" id="rx-led">RX</div>
                             </div>
                         </div>
-
-                        <div class="controls">
-                            <div class="volume-knob"></div>
-                            <button id="ptt-button" class="ptt-btn">PTT</button>
-                        </div>
+                        <div class="channel-display" id="channel-display">---</div>
+                        <div class="status-line" id="status-line">Create or Join a channel</div>
                     </div>
 
-                    <div class="branding">P2P GLOBAL RADIO</div>
+                    <!-- Controls -->
+                    <div class="controls">
+                        <div class="volume-knob">
+                            <div class="knob-dot"></div>
+                        </div>
+                        <button id="ptt-button" class="ptt-btn" disabled>PTT</button>
+                    </div>
+
+                    <div class="branding">P2P RADIO</div>
                 </div>
             </div>
         </section>
 
-        <section class="signaling-section">
-            <details open>
-                <summary>Network Connections (Group Talk)</summary>
-                <div class="sync-action">
-                    <button id="open-sync-btn" class="btn-primary">📡 Sync New Radio</button>
-                </div>
-
-                <div id="peer-list" class="peer-list">
-                    <!-- Dynamic Peer Slots will appear here when connected -->
-                </div>
-            </details>
-        </section>
-
-        <!-- Sleeker Peer Card Template -->
-        <template id="peer-slot-template">
-            <div class="peer-card" data-peer-id="">
-                <div class="peer-info">
-                    <span class="peer-label">RADIO:</span>
-                    <span class="peer-status">IDLE</span>
-                </div>
-                <button class="btn-remove-mini">&times;</button>
-
-                <!-- Hidden backend state -->
-                <div style="display:none">
-                    <textarea class="out-box"></textarea>
-                    <textarea class="in-box"></textarea>
-                    <button class="btn-offer"></button>
-                    <button class="btn-action"></button>
-                    <div class="qr-code"></div>
-                    <button class="btn-share"></button>
-                    <button class="btn-scan"></button>
-                    <button class="btn-import"></button>
+        <!-- ====== CHANNEL CONTROLS ====== -->
+        <section class="channel-section">
+            <div class="channel-controls" id="channel-controls">
+                <button id="create-btn" class="btn-create">📻 CREATE CHANNEL</button>
+                <div class="join-row">
+                    <input type="text" id="join-input" class="join-input" placeholder="Enter channel code..."
+                        maxlength="12" autocomplete="off" spellcheck="false">
+                    <button id="join-btn" class="btn-join">JOIN</button>
                 </div>
             </div>
-        </template>
+
+            <!-- Active Channel Info (hidden until connected) -->
+            <div class="channel-active" id="channel-active" style="display:none;">
+                <div class="active-info">
+                    <span class="active-label">CHANNEL:</span>
+                    <span class="active-code" id="active-code">---</span>
+                </div>
+                <div class="active-stats" id="active-stats">TX: 0 | RX: 0 | RTT: ---</div>
+                <button id="disconnect-btn" class="btn-disconnect">✕ DISCONNECT</button>
+            </div>
+        </section>
     </main>
 
-    <!-- PREMIUM SYNC MODAL -->
-    <div id="sync-modal" class="modal-overlay">
-        <div class="modal-content glass">
-            <div class="modal-header">
-                <h2>SYNC CENTER</h2>
-                <button id="close-modal-btn" class="close-btn">&times;</button>
-            </div>
-
-            <div id="sync-steps">
-                <div class="sync-step active" data-step="1">
-                    <p class="step-label">STEP 1: INVITE</p>
-                    <h3>SHARE YOUR KEY</h3>
-                    <p>Show this code to your partner radio.</p>
-                    <div class="qr-box-premium" id="modal-qr">
-                        <div class="qr-loading">GATHERING SIGNAL...</div>
-                    </div>
-                    <div id="copyable-sync-string"
-                        style="font-size: 0.5rem; background: #000; padding: 5px; margin-top: 5px; border: 1px solid #222; word-break: break-all; color: #555; cursor: pointer;">
-                        Click to Reveal Sync String
-                    </div>
-                    <div class="modal-actions">
-                        <button id="go-to-step2-btn" class="btn-primary">I'm Ready to Scan Partner →</button>
-                        <button id="modal-share-btn" class="btn-modal" disabled>SHARE INVITE IMAGE</button>
-                        <button class="btn-modal" onclick="closeSyncModal()"
-                            style="border:none; color:#666; font-size:0.7rem; background:transparent; padding:5px;">CANCEL
-                            SYNC</button>
-                    </div>
-                </div>
-
-                <div class="sync-step" data-step="2">
-                    <p class="step-label">STEP 2: SCAN</p>
-                    <h3>SCAN PARTNER</h3>
-                    <p>Point camera at their screen.</p>
-                    <div id="scanner-view-modal">
-                        <button id="start-cam-btn" class="btn-primary"
-                            style="font-size: 0.7rem; padding: 10px 20px;">ACTIVATE CAMERA</button>
-                    </div>
-                    <div class="modal-actions">
-                        <button id="go-to-step1-btn" class="btn-modal">← My QR Code</button>
-                        <button id="modal-import-btn" class="btn-modal">IMPORT FROM GALLERY</button>
-                        <button class="btn-modal" id="modal-paste-btn"
-                            style="color:#00ff00; border-color:#00ff00;">DIAGNOSTIC: PASTE STRING</button>
-                        <button class="btn-modal" onclick="closeSyncModal()"
-                            style="border:none; color:#666; font-size:0.7rem; background:transparent; padding:5px;">CANCEL
-                            SYNC</button>
-                    </div>
-                    <div id="paste-area" style="display:none; margin-top:10px;">
-                        <textarea id="sync-paste-input" placeholder="Paste V3|... string here"
-                            style="width:100%; height:60px; background:#000; color:#00ff00; border:1px solid #333; font-family:monospace; font-size:10px; padding:5px;"></textarea>
-                        <button id="do-paste-btn" class="btn-primary"
-                            style="width:100%; margin-top:5px; font-size:0.7rem;">PROCESS PASTE</button>
-                    </div>
-                </div>
-
-                <div class="sync-step" data-step="3">
-                    <h3>SYNC SUCCESSFUL</h3>
-                    <div class="success-icon">✔️</div>
-                    <p>Connection established across networks.</p>
-                    <button id="finish-sync-btn" class="btn-primary">CLOSE</button>
-                </div>
-            </div>
-
-            <div class="handshake-guide"
-                style="font-size: 0.6rem; color: #555; margin-top: 20px; padding: 10px; border-top: 1px solid #1a1a1a;">
-                <b>HOW TO CONNECT:</b><br>
-                1. You show QR → Friend scans it.<br>
-                2. Friend shows NEW QR → You scan it.<br>
-                3. Connected!
-            </div>
-
-            <div class="modal-footer">
-                <div class="dot active"></div>
-                <div class="dot"></div>
-                <div class="dot"></div>
-            </div>
-        </div>
-    </div>
-
-
+    <!-- ====== SIGNALING SERVER CONFIG ====== -->
+    <!-- Change this URL when you deploy the signaling server -->
+    <script>
+        // For local testing: ws://localhost:3000
+        // For production: wss://your-server.onrender.com
+        window.SIGNALING_URL = 'ws://localhost:3000';
+    </script>
     <script src="main.js"></script>
 </body>
 

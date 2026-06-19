@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>P2P Radio - Connection Test</title>
+    <style>
+        body {
+            font-family: monospace;
+            background: #0a0a0f;
+            color: #00ff88;
+            padding: 20px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .log {
+            background: #111;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+            border: 1px solid #333;
+        }
+        .success { color: #00ff88; }
+        .error { color: #ff3344; }
+        .info { color: #ffaa00; }
+        button {
+            background: #00ff88;
+            color: #000;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+            font-weight: bold;
+        }
+        button:hover { background: #00cc66; }
+    </style>
+</head>
+<body>
+    <h1>🔧 P2P Radio Connection Test</h1>
+    
+    <div class="log">
+        <h3>Test Results:</h3>
+        <div id="log"></div>
+    </div>
+
+    <button onclick="testWebSocket()">Test WebSocket Connection</button>
+    <button onclick="testMicrophone()">Test Microphone Access</button>
+    <button onclick="testWebRTC()">Test WebRTC Support</button>
+
+    <script>
+        const log = document.getElementById('log');
+
+        function addLog(message, type = 'info') {
+            const div = document.createElement('div');
+            div.className = type;
+            div.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            log.appendChild(div);
+        }
+
+        function testWebSocket() {
+            addLog('Testing WebSocket connection to ws://localhost:3000...', 'info');
+            
+            const ws = new WebSocket('ws://localhost:3000');
+            
+            ws.onopen = () => {
+                addLog('✅ WebSocket connected successfully!', 'success');
+                ws.close();
+            };
+            
+            ws.onerror = (err) => {
+                addLog('❌ WebSocket connection failed. Is server running?', 'error');
+                console.error(err);
+            };
+            
+            ws.onclose = () => {
+                addLog('WebSocket closed', 'info');
+            };
+        }
+
+        async function testMicrophone() {
+            addLog('Testing microphone access...', 'info');
+            
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true
+                    }
+                });
+                
+                addLog('✅ Microphone access granted!', 'success');
+                addLog(`Audio tracks: ${stream.getAudioTracks().length}`, 'success');
+                
+                // Stop the stream
+                stream.getTracks().forEach(track => track.stop());
+            } catch (err) {
+                addLog(`❌ Microphone access denied: ${err.message}`, 'error');
+                console.error(err);
+            }
+        }
+
+        function testWebRTC() {
+            addLog('Testing WebRTC support...', 'info');
+            
+            if (typeof RTCPeerConnection === 'undefined') {
+                addLog('❌ RTCPeerConnection not supported in this browser', 'error');
+                return;
+            }
+            
+            try {
+                const pc = new RTCPeerConnection({
+                    iceServers: [
+                        { urls: 'stun:stun.l.google.com:19302' }
+                    ]
+                });
+                
+                addLog('✅ RTCPeerConnection created successfully!', 'success');
+                addLog('✅ WebRTC is supported in this browser', 'success');
+                
+                pc.close();
+            } catch (err) {
+                addLog(`❌ WebRTC test failed: ${err.message}`, 'error');
+                console.error(err);
+            }
+        }
+
+        // Auto-run basic tests on load
+        window.addEventListener('load', () => {
+            addLog('=== P2P Radio Connection Test Started ===', 'info');
+            setTimeout(() => {
+                addLog('Click buttons above to run tests', 'info');
+            }, 500);
+        });
+    </script>
+</body>
+</html>
