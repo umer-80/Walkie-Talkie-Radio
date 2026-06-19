@@ -9,3 +9,10 @@ android/local.properties
 # OS files
 .DS_Store
 Thumbs.db
+
+# Local development files (not needed in repo)
+START-HERE.txt
+FIXED-ISSUES.md
+requirements.txt
+start-app.sh
+test-connection.html
