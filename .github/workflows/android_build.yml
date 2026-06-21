@@ -27,9 +27,9 @@ jobs:
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
       
-    - name: Install Android SDK Platform 35
+    - name: Install Android SDK Platforms
       run: |
-        sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+        sdkmanager "platform-tools" "platforms;android-36" "platforms;android-35" "build-tools;36.0.0" "build-tools;35.0.0"
         
     - name: Install dependencies
       run: npm install
