@@ -23,6 +23,13 @@ jobs:
       with:
         java-version: 17
         distribution: temurin
+    
+    - name: Setup Android SDK
+      uses: android-actions/setup-android@v3
+      
+    - name: Install Android SDK Platform 35
+      run: |
+        sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
         
     - name: Install dependencies
       run: npm install
@@ -34,7 +41,7 @@ jobs:
         cp -f main.js www/
         cp -f style.css www/
         
-    - name: Sync Capacitor using local CLI
+    - name: Sync Capacitor
       run: ./node_modules/.bin/cap sync android
       
     - name: Build APK
