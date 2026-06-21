@@ -88,9 +88,12 @@
     <!-- ====== SIGNALING SERVER CONFIG ====== -->
     <!-- Change this URL when you deploy the signaling server -->
     <script>
-        // For local testing: ws://localhost:3000
-        // For production: wss://your-server.onrender.com
-        window.SIGNALING_URL = 'ws://localhost:3000';
+        // Use local IP for Android, but 127.0.0.1 for local web browser to avoid PNA/CORS blocks
+        let sigUrl = 'ws://192.168.18.135:3000';
+        if (!window.Capacitor) {
+            sigUrl = 'ws://127.0.0.1:3000';
+        }
+        window.SIGNALING_URL = sigUrl;
     </script>
     <script src="main.js"></script>
 </body>

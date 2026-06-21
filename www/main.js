@@ -186,7 +186,8 @@ function setupUI() {
 // ============================================================
 
 function connectSignaling() {
-    const url = window.SIGNALING_URL || 'ws://localhost:3000';
+    // Use local network IP so mobile app can connect over WiFi
+    const url = window.SIGNALING_URL || 'ws://192.168.18.135:3000';
     setStatus('CONNECTING', 'connecting');
     statusLine.textContent = 'Connecting to server...';
 
