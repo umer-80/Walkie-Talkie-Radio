@@ -24,28 +24,18 @@ jobs:
         java-version: 17
         distribution: temurin
         
-    - name: Verify Node and npm
-      run: |
-        node --version
-        npm --version
-        npx --version
-        
-    - name: Install npm dependencies
+    - name: Install dependencies
       run: npm install
       
-    - name: Install Capacitor CLI globally
-      run: npm install -g @capacitor/cli
-      
-    - name: Copy web assets to www folder
+    - name: Copy web assets
       run: |
         mkdir -p www
         cp -f index.html www/
         cp -f main.js www/
         cp -f style.css www/
-        ls -la www/
-      
-    - name: Run Capacitor sync
-      run: npx cap sync android
+        
+    - name: Sync Capacitor using local CLI
+      run: ./node_modules/.bin/cap sync android
       
     - name: Build APK
       run: |
