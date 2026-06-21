@@ -1,46 +1,52 @@
-name: Android CI
+name: Build Android APK
 
 on:
   push:
-    branches: [ main ]
-  pull_request:
     branches: [ main ]
   workflow_dispatch:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     steps:
-    - uses: actions/checkout@v4
+    - name: Checkout code
+      uses: actions/checkout@v4
     
-    - name: set up JDK 17
+    - name: Setup JDK 17
       uses: actions/setup-java@v4
       with:
-        java-version: '17'
-        distribution: 'temurin'
-        cache: gradle
+        java-version: 17
+        distribution: temurin
         
-    - name: Setup Node.js
+    - name: Setup Node 18
       uses: actions/setup-node@v4
       with:
-        node-version: '18'
+        node-version: 18
         
-    - name: Install dependencies
-      run: npm install
+    - name: Install npm dependencies
+      run: npm ci || npm install
       
-    - name: Capacitor sync
+    - name: Copy web assets to www folder
+      run: |
+        mkdir -p www
+        cp -f index.html www/
+        cp -f main.js www/
+        cp -f style.css www/
+        ls -la www/
+      
+    - name: Run Capacitor sync
       run: npx cap sync android
       
-    - name: Grant execute permission for gradlew
-      run: chmod +x android/gradlew
-      
-    - name: Build with Gradle
-      run: ./gradlew assembleDebug
-      working-directory: ./android
+    - name: Build APK
+      run: |
+        cd android
+        chmod +x ./gradlew
+        ./gradlew assembleDebug --no-daemon --stacktrace
       
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
-        name: app-debug
+        name: app-debug-apk
         path: android/app/build/outputs/apk/debug/app-debug.apk
+        if-no-files-found: error
