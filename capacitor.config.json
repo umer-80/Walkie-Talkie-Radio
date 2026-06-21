@@ -3,6 +3,8 @@
   "appName": "P2P Radio",
   "webDir": "www",
   "server": {
+    "hostname": "192.168.18.135",
+    "androidScheme": "http",
     "cleartext": true
   }
 }
